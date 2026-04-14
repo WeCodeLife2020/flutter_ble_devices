@@ -1,4 +1,4 @@
-package com.bluetodev.bluetodev
+package com.wecodelife.flutter_ble_devices
 
 import android.Manifest
 import android.app.Activity
@@ -40,16 +40,16 @@ import cn.icomon.icdevicemanager.model.data.ICWeightData
 import cn.icomon.icdevicemanager.model.data.ICWeightCenterData
 
 /**
- * BluetodevPlugin — Flutter MethodChannel + EventChannel bridge to Lepu BLE SDK.
+ * FlutterBleDevicesPlugin — Flutter MethodChannel + EventChannel bridge to Lepu BLE SDK.
  *
  * MethodChannel "viatom_ble"         → commands (scan, connect, startMeasurement, etc.)
  * EventChannel "viatom_ble_stream"   → events  (scan results, connection state, RT data)
  */
-class BluetodevPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
+class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     PluginRegistry.RequestPermissionsResultListener {
 
     companion object {
-        private const val TAG = "BluetodevPlugin"
+        private const val TAG = "FlutterBleDevicesPlugin"
         private const val METHOD_CHANNEL = "viatom_ble"
         private const val EVENT_CHANNEL = "viatom_ble_stream"
         private const val PERMISSION_REQUEST_CODE = 9527

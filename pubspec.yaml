@@ -1,7 +1,7 @@
-name: bluetodev
+name: flutter_ble_devices
 description: "Flutter plugin for Viatom/Lepu BLE medical devices (ECG, Oximeter, BP). Wraps the official lepu-blepro Android SDK."
 version: 1.0.0
-homepage: https://github.com/viatom-develop/LepuDemo
+
 
 environment:
   sdk: ^3.10.7
@@ -22,5 +22,5 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.bluetodev.bluetodev
-        pluginClass: BluetodevPlugin
+        package: com.wecodelife.flutter_ble_devices
+        pluginClass: FlutterBleDevicesPlugin

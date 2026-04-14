@@ -1,7 +1,7 @@
-// This is a basic test file for the bluetodev plugin.
+// This is a basic test file for the flutter_ble_devices plugin.
 // Add actual tests as needed.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:bluetodev/bluetodev.dart';
+import 'package:flutter_ble_devices/flutter_ble_devices.dart';
 
 void main() {
   test('DeviceModels contains ECG models', () {

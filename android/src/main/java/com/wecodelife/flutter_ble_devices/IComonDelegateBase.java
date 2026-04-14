@@ -1,4 +1,4 @@
-package com.bluetodev.bluetodev;
+package com.wecodelife.flutter_ble_devices;
 
 import java.util.List;
 

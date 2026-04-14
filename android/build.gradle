@@ -1,4 +1,4 @@
-group = "com.bluetodev.bluetodev"
+group = "com.wecodelife.flutter_ble_devices"
 version = "1.0-SNAPSHOT"
 
 buildscript {
@@ -31,7 +31,7 @@ apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 
 android {
-    namespace = "com.bluetodev.bluetodev"
+    namespace = "com.wecodelife.flutter_ble_devices"
 
     compileSdk = 36
 
@@ -92,10 +92,10 @@ android {
 rootProject.allprojects {
     repositories {
         maven { url 'https://jitpack.io' }
-        def bluetodevProject = rootProject.findProject(':bluetodev')
-        if (bluetodevProject != null) {
+        def flutterBleDevicesProject = rootProject.findProject(':flutter_ble_devices')
+        if (flutterBleDevicesProject != null) {
             flatDir {
-                dirs bluetodevProject.file('libs')
+                dirs flutterBleDevicesProject.file('libs')
             }
         }
     }
