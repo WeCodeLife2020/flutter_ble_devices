@@ -30,19 +30,35 @@ static NSString *const kAirBPTxCharUUID  = @"6E400002-B5A3-F393-E0A9-E50E24DCCA9
 static NSString *const kAirBPRxCharUUID  = @"6E400003-B5A3-F393-E0A9-E50E24DCCA9E"; // device → phone (notify)
 
 // iComon scale SDK (vendored under ios/Frameworks/).
-#import <ICDeviceManager/ICDeviceManager.h>
-#import <ICDeviceManager/ICDeviceManagerDelegate.h>
-#import <ICDeviceManager/ICScanDeviceDelegate.h>
-#import <ICDeviceManager/ICScanDeviceInfo.h>
-#import <ICDeviceManager/ICDevice.h>
-#import <ICDeviceManager/ICDeviceManagerConfig.h>
-#import <ICDeviceManager/ICUserInfo.h>
-#import <ICDeviceManager/ICWeightData.h>
-#import <ICDeviceManager/ICWeightCenterData.h>
-#import <ICDeviceManager/ICConstant.h>
+//
+// The iComon SDK vendors Obj-C classes named `ICDevice`, `ICDeviceManager`
+// and `ICDeviceInfo` — which collide with Apple's public
+// `ImageCaptureCore.framework` and private `iTunesCloud.framework`. We
+// surface that conflict only when the host app opts into the `IComon`
+// subspec (see `flutter_ble_devices.podspec`). When the subspec is not
+// active the iComon headers aren't on the include path and
+// `FBD_HAS_ICOMON` stays 0, which strips every iComon symbol from the
+// compiled binary.
+#if __has_include(<ICDeviceManager/ICDeviceManager.h>)
+    #define FBD_HAS_ICOMON 1
+    #import <ICDeviceManager/ICDeviceManager.h>
+    #import <ICDeviceManager/ICDeviceManagerDelegate.h>
+    #import <ICDeviceManager/ICScanDeviceDelegate.h>
+    #import <ICDeviceManager/ICScanDeviceInfo.h>
+    #import <ICDeviceManager/ICDevice.h>
+    #import <ICDeviceManager/ICDeviceManagerConfig.h>
+    #import <ICDeviceManager/ICUserInfo.h>
+    #import <ICDeviceManager/ICWeightData.h>
+    #import <ICDeviceManager/ICWeightCenterData.h>
+    #import <ICDeviceManager/ICConstant.h>
+#else
+    #define FBD_HAS_ICOMON 0
+#endif
 
 static NSString *const kMethodChannelName = @"viatom_ble";
 static NSString *const kEventChannelName  = @"viatom_ble_stream";
+
+#define FBD_LOG(fmt, ...) NSLog(@"[FBDevices] " fmt, ##__VA_ARGS__)
 
 #pragma mark - FlutterBleDevicesPlugin
 
@@ -51,9 +67,12 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
                                        CBPeripheralDelegate,
                                        VTMURATDeviceDelegate,
                                        VTMURATUtilsDelegate,
-                                       VTO2CommunicateDelegate,
-                                       ICDeviceManagerDelegate,
-                                       ICScanDeviceDelegate>
+                                       VTO2CommunicateDelegate
+#if FBD_HAS_ICOMON
+                                     , ICDeviceManagerDelegate
+                                     , ICScanDeviceDelegate
+#endif
+>
 
 @property (nonatomic, strong) FlutterMethodChannel *methodChannel;
 @property (nonatomic, strong) FlutterEventChannel  *eventChannel;
@@ -71,11 +90,13 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 @property (nonatomic, strong) VTMURATUtils     *uratUtil;
 @property (nonatomic, strong) VTO2Communicate  *o2Util;
 
-// iComon SDK state
+#if FBD_HAS_ICOMON
+// iComon SDK state — only present when the IComon subspec is active.
 @property (nonatomic, assign) BOOL iComonInitialized;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, ICScanDeviceInfo *> *iComonScans; // macAddr → scan info
 @property (nonatomic, strong) ICDevice *activeIComonDevice;
 @property (nonatomic, strong) ICUserInfo *currentUserInfo;
+#endif
 
 // AirBP state (when activeMapping.protocolPath == VTMProtocolPathAirBP)
 @property (nonatomic, strong) CBCharacteristic *airBPTxChar;
@@ -107,6 +128,7 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     inst.eventChannel = [FlutterEventChannel eventChannelWithName:kEventChannelName
                                                   binaryMessenger:[registrar messenger]];
     [inst.eventChannel setStreamHandler:inst];
+    FBD_LOG(@"registered (iComon=%@)", FBD_HAS_ICOMON ? @"YES" : @"NO");
 }
 
 - (instancetype)init {
@@ -114,13 +136,15 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
         _discovered     = [NSMutableDictionary dictionary];
         _advData        = [NSMutableDictionary dictionary];
         _mappings       = [NSMutableDictionary dictionary];
-        _iComonScans    = [NSMutableDictionary dictionary];
         _connectedModel = -1;
+#if FBD_HAS_ICOMON
+        _iComonScans    = [NSMutableDictionary dictionary];
         _currentUserInfo = [ICUserInfo new];
-        _currentUserInfo.age       = 25;
-        _currentUserInfo.height    = 175;
-        _currentUserInfo.sex       = ICSexTypeMale;
+        _currentUserInfo.age        = 25;
+        _currentUserInfo.height     = 175;
+        _currentUserInfo.sex        = ICSexTypeMale;
         _currentUserInfo.peopleType = ICPeopleTypeNormal;
+#endif
     }
     return self;
 }
@@ -168,6 +192,7 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 }
 
 - (void)handleUpdateUserInfo:(FlutterMethodCall *)call result:(FlutterResult)result {
+#if FBD_HAS_ICOMON
     NSNumber *heightNum = call.arguments[@"height"];
     NSNumber *ageNum    = call.arguments[@"age"];
     NSNumber *isMaleNum = call.arguments[@"isMale"];
@@ -175,9 +200,9 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     ICUserInfo *info = [ICUserInfo new];
     info.userIndex   = 1;
     info.height      = heightNum ? (NSUInteger)heightNum.doubleValue : 170;
-    info.age         = ageNum    ? (NSUInteger)ageNum.integerValue   : 25;
-    info.sex         = (isMaleNum == nil || isMaleNum.boolValue) ? ICSexTypeMale : ICSexTypeFemal;
-    info.peopleType  = ICPeopleTypeNormal;
+    info.age          = ageNum    ? (NSUInteger)ageNum.integerValue   : 25;
+    info.sex          = (isMaleNum == nil || isMaleNum.boolValue) ? ICSexTypeMale : ICSexTypeFemal;
+    info.peopleType   = ICPeopleTypeNormal;
     info.enableMeasureImpendence = YES;
     info.enableMeasureHr         = YES;
 
@@ -186,6 +211,13 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
         [[ICDeviceManager shared] updateUserInfo:info];
     }
     result(@YES);
+#else
+    // iComon subspec not active — silently accept the call so Dart code
+    // doesn't need to branch on platform capability. Viatom/AirBP devices
+    // do not need this data.
+    (void)call;
+    result(@YES);
+#endif
 }
 
 #pragma mark - Service lifecycle
@@ -194,7 +226,8 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     if (self.central == nil) {
         self.central = [[CBCentralManager alloc] initWithDelegate:self queue:dispatch_get_main_queue()];
     }
-    // Bring up the iComon SDK exactly once.
+#if FBD_HAS_ICOMON
+    // Bring up the iComon SDK exactly once (opt-in subspec).
     if (!self.iComonInitialized) {
         ICDeviceManagerConfig *cfg = [ICDeviceManagerConfig new];
         cfg.isShowPowerAlert = NO;
@@ -202,8 +235,11 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
         [[ICDeviceManager shared] initMgrWithConfig:cfg];
         [[ICDeviceManager shared] updateUserInfo:self.currentUserInfo];
         // iComonInitialized becomes YES once onInitFinish:YES fires.
+        FBD_LOG(@"iComon SDK init requested");
     }
+#endif
     self.serviceInitialized = YES;
+    FBD_LOG(@"initService complete");
     [self sendEvent:@{@"event": @"serviceReady"}];
     result(@YES);
 }
@@ -243,11 +279,14 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
         return;
     }
     [self startCentralScan];
+#if FBD_HAS_ICOMON
     // iComon SDK scans independently via its own CBCentralManager.
     if (self.iComonInitialized) {
         [self.iComonScans removeAllObjects];
         [[ICDeviceManager shared] scanDevice:self];
     }
+#endif
+    FBD_LOG(@"scan started (models=%@)", self.scanModelFilter ?: @"any");
     result(@YES);
 }
 
@@ -261,10 +300,13 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     if (self.central.isScanning) {
         [self.central stopScan];
     }
+#if FBD_HAS_ICOMON
     if (self.iComonInitialized) {
         [[ICDeviceManager shared] stopScan];
     }
+#endif
     self.scanRequested = NO;
+    FBD_LOG(@"scan stopped");
     result(@YES);
 }
 
@@ -276,6 +318,7 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     NSString *sdk  = call.arguments[@"sdk"] ?: @"lepu";
 
     if ([sdk isEqualToString:@"icomon"]) {
+#if FBD_HAS_ICOMON
         if (!self.iComonInitialized) {
             result([FlutterError errorWithCode:@"NOT_INITIALIZED"
                                        message:@"iComon SDK not ready — onInitFinish has not fired yet. Retry shortly."
@@ -298,11 +341,18 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
         mapping.deviceType    = @"scale";
         self.activeMapping    = mapping;
 
+        FBD_LOG(@"connect iComon mac=%@", mac);
         [[ICDeviceManager shared] addDevice:dev callback:^(ICDevice * _Nonnull device, ICAddDeviceCallBackCode code) {
             // Connection state update comes through onDeviceConnectionChanged:state:
         }];
         result(@YES);
         return;
+#else
+        result([FlutterError errorWithCode:@"UNSUPPORTED"
+                                   message:@"iComon scale support is not compiled in. Add the 'IComon' subspec to your Podfile — see flutter_ble_devices README."
+                                   details:nil]);
+        return;
+#endif
     }
 
     if (mac.length == 0) {
@@ -344,11 +394,14 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     // Stop scanning to free the radio for GATT.
     if (self.central.isScanning) [self.central stopScan];
 
+    FBD_LOG(@"connect mac=%@ family=%@ model=%ld path=%d", mac, mapping.family,
+            (long)mapping.lepuModel, (int)mapping.protocolPath);
     [self.central connectPeripheral:peripheral options:nil];
     result(@YES);
 }
 
 - (void)handleDisconnect:(FlutterResult)result {
+#if FBD_HAS_ICOMON
     if (self.activeMapping.protocolPath == VTMProtocolPathIComon && self.activeIComonDevice) {
         [[ICDeviceManager shared] removeDevice:self.activeIComonDevice
                                       callback:^(ICDevice * _Nonnull device, ICRemoveDeviceCallBackCode code) {}];
@@ -356,11 +409,17 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     } else if (self.activePeripheral) {
         [self.central cancelPeripheralConnection:self.activePeripheral];
     }
+#else
+    if (self.activePeripheral) {
+        [self.central cancelPeripheralConnection:self.activePeripheral];
+    }
+#endif
     // Tear down Viatom utils
     self.uratUtil = nil;
     self.o2Util   = nil;
     self.connectedModel = -1;
     self.serviceDeployed = NO;
+    FBD_LOG(@"disconnect requested");
     result(@YES);
 }
 
@@ -533,6 +592,7 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 #pragma mark - CBCentralManagerDelegate
 
 - (void)centralManagerDidUpdateState:(CBCentralManager *)central {
+    FBD_LOG(@"centralManagerDidUpdateState=%ld", (long)central.state);
     if (central.state == CBManagerStatePoweredOn) {
         if (self.scanRequested) {
             [self startCentralScan];
@@ -582,6 +642,7 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     peripheral.delegate = self;
     VTMDeviceMapping *m = self.activeMapping;
     if (m == nil) m = self.mappings[peripheral.identifier.UUIDString];
+    FBD_LOG(@"didConnect uuid=%@ path=%d", peripheral.identifier.UUIDString, (int)m.protocolPath);
     if (m.protocolPath == VTMProtocolPathAirBP) {
         // Drive the peripheral ourselves — no VT/VTM util is involved.
         self.uratUtil = nil;
@@ -612,6 +673,8 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 - (void)centralManager:(CBCentralManager *)central
 didFailToConnectPeripheral:(CBPeripheral *)peripheral
                  error:(NSError *)error {
+    FBD_LOG(@"didFailToConnect uuid=%@ err=%@",
+            peripheral.identifier.UUIDString, error.localizedDescription);
     self.activePeripheral = nil;
     self.activeMapping    = nil;
     self.connectedModel   = -1;
@@ -624,6 +687,8 @@ didFailToConnectPeripheral:(CBPeripheral *)peripheral
 - (void)centralManager:(CBCentralManager *)central
 didDisconnectPeripheral:(CBPeripheral *)peripheral
                  error:(NSError *)error {
+    FBD_LOG(@"didDisconnect uuid=%@ err=%@",
+            peripheral.identifier.UUIDString, error.localizedDescription);
     self.activePeripheral = nil;
     self.activeMapping    = nil;
     self.connectedModel   = -1;
@@ -643,6 +708,8 @@ didDisconnectPeripheral:(CBPeripheral *)peripheral
 - (void)utilDeployCompletion:(VTMURATUtils *)util {
     self.serviceDeployed = YES;
     self.connectedModel  = self.activeMapping.lepuModel;
+    FBD_LOG(@"URAT deploy complete model=%ld family=%@",
+            (long)self.connectedModel, self.activeMapping.family);
     [self sendEvent:@{@"event": @"connectionState",
                       @"state": @"connected",
                       @"model": @(self.connectedModel),
@@ -651,6 +718,7 @@ didDisconnectPeripheral:(CBPeripheral *)peripheral
 }
 
 - (void)utilDeployFailed:(VTMURATUtils *)util {
+    FBD_LOG(@"URAT deploy FAILED");
     [self sendEvent:@{@"event": @"connectionState",
                       @"state": @"disconnected",
                       @"reason": @"service_discovery_failed"}];
@@ -1036,8 +1104,10 @@ commandCompletion:(u_char)cmdType
 
 #pragma mark - ICDeviceManagerDelegate  (iComon scale path)
 
+#if FBD_HAS_ICOMON
 - (void)onInitFinish:(BOOL)bSuccess {
     self.iComonInitialized = bSuccess;
+    FBD_LOG(@"iComon onInitFinish=%@", bSuccess ? @"YES" : @"NO");
 }
 
 - (void)onBleState:(ICBleState)state {
@@ -1203,6 +1273,7 @@ commandCompletion:(u_char)cmdType
                       @"heartRate":             @(data.hr),
                       @"impedance":             @(data.imp)}];
 }
+#endif  // FBD_HAS_ICOMON
 
 #pragma mark - AirBP — CBPeripheralDelegate (Nordic UART)
 

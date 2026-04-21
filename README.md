@@ -64,23 +64,62 @@ The AARs are already vendored in `android/libs/`. Nothing else is required.
 
 ### iOS
 
-The iOS plugin depends on two SDKs:
+The iOS plugin ships as two CocoaPods subspecs:
 
-1. [`VTMProductLib`](https://github.com/viatom-dev/VTProductLib) — pulled
-   from CocoaPods (`pod 'VTMProductLib', '~> 1.5'`) for Viatom ECG, BP,
-   oximeter, and S1-scale devices.
-2. **iComon `ICDeviceManager.xcframework`** plus its three helpers
-   (`ICBleProtocol`, `ICBodyFatAlgorithms`, `ICLogger`) — vendored inside
-   `ios/Frameworks/` and declared via `vendored_frameworks` in the
-   podspec. Used for iComon / Welland body-composition scales.
+| Subspec | What it pulls in | Devices it enables |
+| --- | --- | --- |
+| **`Core`** *(default)* | `VTMProductLib` (Obj-C xcframework from CocoaPods) + the AirBP Nordic-UART parser baked into this repo | ECG (ER1/ER2/ER3/M-series), BP2/BP3, Viatom oximeters (legacy `0xAA` **and** URAT/FOxi/WOxi), Viatom S1 scale, AirBP / SmartBP |
+| **`IComon`** *(opt-in)* | Everything in `Core` plus the four vendored iComon xcframeworks (`ICDeviceManager`, `ICBleProtocol`, `ICBodyFatAlgorithms`, `ICLogger`) | iComon / Welland body-composition scales |
 
-After adding this plugin to your app, run:
+The **IComon subspec is opt-in on purpose**. Those xcframeworks register
+Obj-C classes named `ICDevice`, `ICDeviceManager`, and `ICDeviceInfo`,
+which **collide with Apple's own `ImageCaptureCore.framework`** and the
+private `iTunesCloud.framework`. Apps that don't need scale support
+should stay on `Core` to avoid the runtime warning:
+
+```
+objc[…]: Class ICDeviceManager is implemented in both
+  /System/Library/Frameworks/ImageCaptureCore.framework/ImageCaptureCore
+  AND /path/to/Runner.app/Runner.debug.dylib
+  This may cause spurious casting failures and mysterious crashes.
+```
+
+#### Default install (ECG/BP/Oximeter/AirBP only)
 
 ```sh
 cd ios && pod install
 ```
 
-Add the following keys to your app's `ios/Runner/Info.plist`:
+That's it — the default `Core` subspec is selected automatically.
+
+#### Opting into iComon scale support
+
+Edit your app's `ios/Podfile` and declare the subspecs explicitly:
+
+```ruby
+target 'Runner' do
+  use_frameworks!
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  # Pull both subspecs so body-composition scales work.
+  pod 'flutter_ble_devices',
+      :path     => '.symlinks/plugins/flutter_ble_devices/ios',
+      :subspecs => ['Core', 'IComon']
+end
+```
+
+Then `pod install --repo-update`. The iComon SDK is linked, and
+`FlutterBleDevicesPlugin.m` automatically picks up the iComon code paths
+via `__has_include(<ICDeviceManager/ICDeviceManager.h>)` — no manual
+flags needed.
+
+If a call to `connect(sdk: 'icomon', …)` reaches an app built without the
+`IComon` subspec, the plugin returns a clean `UNSUPPORTED` method-channel
+error instead of crashing.
+
+#### `Info.plist` keys
+
+Required on **both** subspec configurations:
 
 ```xml
 <key>NSBluetoothAlwaysUsageDescription</key>
