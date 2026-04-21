@@ -24,3 +24,5 @@ flutter:
       android:
         package: com.wecodelife.flutter_ble_devices
         pluginClass: FlutterBleDevicesPlugin
+      ios:
+        pluginClass: FlutterBleDevicesPlugin
