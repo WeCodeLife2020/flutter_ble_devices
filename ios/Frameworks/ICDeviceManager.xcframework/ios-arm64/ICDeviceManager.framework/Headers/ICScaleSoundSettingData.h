@@ -13,15 +13,15 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ICScaleSoundSettingData : NSObject
 
-/// 秤的语言类型 根据设备返回的支持列表来选择。
+/// Language type for the scale. Pick a value from the list returned by the device.
 @property (nonatomic, assign) NSUInteger soundLanguageCode;
-/// 秤的音量大小 0:静音 1~30:小 31~70:中 71~100:大
+/// Scale volume. 0: mute, 1-30: low, 31-70: medium, 71-100: high.
 @property (nonatomic, assign) NSUInteger soundVolume;
-/// 秤的语音播报开关
+/// Voice-broadcast switch.
 @property (nonatomic, assign) BOOL soundBroadcastOn;
-/// 秤的音效开关
+/// Sound-effects switch.
 @property (nonatomic, assign) BOOL soundEffectsOn;
-/// 秤支持的语言列表
+/// List of languages the scale supports.
 @property (nonatomic, strong) NSArray<NSNumber *> *listSoundSupportLanguage;
 
 @end

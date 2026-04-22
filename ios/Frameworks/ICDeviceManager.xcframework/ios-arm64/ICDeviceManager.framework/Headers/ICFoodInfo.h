@@ -9,16 +9,16 @@
 #import <Foundation/Foundation.h>
 
 /*
- 食物信息
+ Food information.
  */
 @interface ICFoodInfo : NSObject
 
 /**
- 食物序号
+ Food index.
  */
 @property (nonatomic, assign) NSUInteger foodIndex;
 /**
- 食物ID
+ Food ID.
  */
 @property (nonatomic, assign) NSInteger foodId;
 

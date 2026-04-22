@@ -10,27 +10,27 @@
 
 
 /**
- 电极数据
+ Electrode-by-electrode weight data.
  */
 @interface ICElectrodeData : NSObject
 
 /**
- 左上重量(单位:kg)
+ Top-left electrode weight (kg).
  */
 @property (nonatomic, assign) NSUInteger weightLT_kg;
 
 /**
- 左下重量(单位:kg)
+ Bottom-left electrode weight (kg).
  */
 @property (nonatomic, assign) NSUInteger weightLB_kg;
 
 /**
- 右上重量(单位:kg)
+ Top-right electrode weight (kg).
  */
 @property (nonatomic, assign) NSUInteger weightRT_kg;
 
 /**
- 右下重量(单位:kg)
+ Bottom-right electrode weight (kg).
  */
 @property (nonatomic, assign) NSUInteger weightRB_kg;
 

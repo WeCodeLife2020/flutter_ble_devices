@@ -11,31 +11,31 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /*
- Wifi信息数据
+ Wi-Fi information data.
  */
 @interface ICWifiInfoData : NSObject
 
 /**
- Wifi ssid
+ Wi-Fi SSID.
  */
 @property (nonatomic, strong) NSString *ssid;
 /**
- 信号
+ Signal strength (RSSI).
  */
 @property (nonatomic, assign) NSInteger rssi;
 /**
- 加密方式
- (扫描Wifi信息)
+ Encryption method.
+ (Used in scanned Wi-Fi info.)
  */
 @property (nonatomic, assign) NSUInteger method;
 /**
-状态，0:未配网，1:未连接wifi，2:已连接wifi未连接服务器，3:已连接服务器,4:wifi模块未上电
-(当前Wifi信息)
+ Status. 0: not configured, 1: Wi-Fi not connected, 2: Wi-Fi connected but server not connected, 3: server connected, 4: Wi-Fi module not powered.
+ (Used in current Wi-Fi info.)
  */
 @property (nonatomic, assign) NSInteger status;
 /**
-ip
-(当前Wifi信息)
+ IP address.
+ (Used in current Wi-Fi info.)
  */
 @property (nonatomic, strong) NSString *ip;
 

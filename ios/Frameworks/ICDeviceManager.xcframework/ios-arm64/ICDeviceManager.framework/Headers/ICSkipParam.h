@@ -14,29 +14,29 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ICSkipParam : NSObject
 
 /**
- 模式
+ Mode.
  */
 @property (nonatomic, assign) ICSkipMode mode;
 
 /**
- 跳绳参数/ 间歇跳，单轮时长/单轮次数（S2）
+ Skipping parameter. Interval mode: per-round duration (S2: per-round count).
 
  */
 @property (nonatomic, assign) NSUInteger param;
 
 /**
- 间歇跳，单轮休息时长
+ Rest interval between rounds in the interval mode.
  */
 @property (nonatomic, assign) NSUInteger rest_time;
 
 /**
- 间歇跳，组数
+ Number of groups in the interval mode.
  */
 @property (nonatomic, assign) NSUInteger group;
 
 
 /**
- 竞技款的比赛模式，0: 5人竞技,1: 团队竞技
+ Competition mode (sports edition). 0: 5-person competition, 1: team competition.
  */
 @property (nonatomic, assign) NSUInteger matchMode;
 

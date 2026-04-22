@@ -2,8 +2,8 @@
 //  ICUserInfo.h
 //  ICleDevice
 //
-//  Created by lifesense－mac on 17/4/18.
-//  Copyright © 2017年 lifesense. All rights reserved.
+//  Created by lifesense-mac on 17/4/18.
+//  Copyright (c) 2017 lifesense. All rights reserved.
 //
 
 #import <Foundation/Foundation.h>
@@ -12,182 +12,182 @@
 @class ICRNIData;
 
 /**
- 用户信息
+ User information.
  */
 @interface ICUserInfo : NSObject
 
 /**
- 用户编号,默认:1
+ User index. Default: 1.
  */
 @property (nonatomic, assign) NSUInteger userIndex;
 
 /**
- 用户ID,默认:0
+ User ID. Default: 0.
  */
 @property (nonatomic, assign) NSUInteger userId;
 
 
 /**
- 用户呢称,默认:"icomon"
+ User nickname. Default: "icomon".
  */
 @property (nonatomic, strong) NSString *nickName;
 /**
- 用户呢称校验码,默认0
+ Nickname checksum. Default: 0.
  */
 @property (nonatomic, assign) NSUInteger nickNameCS;
 /**
- 用户头像序列
+ Avatar sequence.
  */
 @property (nonatomic, assign) NSUInteger headTypeSequence;
 
 /**
- 用户头像索引
+ Avatar index.
  */
 @property (nonatomic, assign) NSUInteger headType;
 
 
 /**
- 语言,默认:1
+ Language. Default: 1.
  */
 @property (nonatomic, assign) NSUInteger lang;
 
 /**
- 节点ID,竞技款
+ Node ID (sports-edition devices only).
  */
 @property (nonatomic, assign) NSUInteger nodeId;
 
 
 /**
- 年级竞技款头像
+ Grade (sports-edition avatar).
  */
 @property (nonatomic, assign) NSUInteger sclass;
 
 /**
- 班级,竞技款
+ Class (sports-edition devices only).
  */
 @property (nonatomic, assign) NSUInteger grade;
 
 /**
- 学号,竞技款
+ Student number (sports-edition devices only).
  */
 @property (nonatomic, assign) NSUInteger studentNo;
 
 /**
- 身高(cm),默认:172cm
+ Height in centimetres. Default: 172.
  */
 @property (nonatomic, assign) NSUInteger height;
 
 /**
- 体重(kg),默认:60.0kg
+ Weight in kilograms. Default: 60.0.
  */
 @property (nonatomic, assign) float weight;
 
 /**
- 年龄,默认:24
+ Age. Default: 24.
  */
 @property (nonatomic, assign) NSUInteger age;
 
 /**
- 性别,默认:ICSexTypeMale
+ Sex. Default: ICSexTypeMale.
  */
 @property (nonatomic, assign) ICSexType sex;
 
 /**
- 上次的阻抗
+ Impedance from the previous measurement.
  */
 @property (nonatomic, assign) float lastImpedance;
 /**
- 目标类型: 1:体重，2:BMI，3:体脂率
+ Goal type. 1: weight, 2: BMI, 3: body-fat percentage.
  */
 @property (nonatomic, assign) int targetType;
 
 /**
- 起始体重(kg),默认:50.0kg
+ Starting weight in kilograms. Default: 50.0.
  */
 @property (nonatomic, assign) float startWeight;
 /**
- 目标体重(kg),默认:50.0kg
+ Target weight in kilograms. Default: 50.0.
  */
 @property (nonatomic, assign) float targetWeight;
 
 /**
- 体重方向,默认:0 减重，1:增重
+ Weight-goal direction. Default: 0 (lose weight). 1: gain weight.
  */
 @property (nonatomic, assign) NSUInteger weightDirection;
 
 /**
- 使用体脂算法版本,默认:ICBFATypeWLA01
+ Body-fat algorithm version to use. Default: ICBFATypeWLA01.
  */
 @property (nonatomic, assign) ICBFAType bfaType;
 
 
 /**
- 锁定使用体脂算法版本,设置以后，设备上传上来的算法版本将不生效,默认:ICBFATypeWLA01
+ Locked body-fat algorithm version. Once set, any algorithm version uploaded by the device is ignored. Default: ICBFATypeWLA01.
  */
 @property (nonatomic, assign) ICBFAType lockBfaType;
 
 /**
- 用户类型,默认:ICPeopleTypeNormal
+ User type. Default: ICPeopleTypeNormal.
  */
 @property (nonatomic, assign) ICPeopleType peopleType;
 
 /**
- 用户默认的体重单位,默认:ICWeightUnitKg
+ User's default weight unit. Default: ICWeightUnitKg.
  */
 @property (nonatomic, assign) ICWeightUnit weightUnit;
 
 /**
- 用户默认的围尺单位,默认:ICRulerUnitCM
+ User's default tape-measure unit. Default: ICRulerUnitCM.
  */
 @property (nonatomic, assign) ICRulerUnit rulerUnit;
 
 /**
- 用户默认的围尺测量模式,默认:ICRulerMeasureModeLength
+ User's default tape-measure mode. Default: ICRulerMeasureModeLength.
  */
 @property (nonatomic, assign) ICRulerMeasureMode rulerMode;
 
 /**
- 厨房秤默认单位,默认:ICKitchenScaleUnitG
+ Kitchen-scale default unit. Default: ICKitchenScaleUnitG.
  */
 @property (nonatomic, assign) ICKitchenScaleUnit kitchenUnit;
 
 /**
- BMI标准,默认:ICBMIStandard1
+ BMI standard. Default: ICBMIStandard1.
  */
 @property (nonatomic, assign) ICBMIStandard stanard;
 
 /**
- * 是否启用测量阻抗,默认:YES,仅支持的设备有效
+ * Whether impedance measurement is enabled. Default: YES. Only effective on supported devices.
  */
 @property (nonatomic, assign)  BOOL enableMeasureImpendence;
 /**
- * 是否启用测量HR,默认:YES,仅支持的设备有效
+ * Whether heart-rate measurement is enabled. Default: YES. Only effective on supported devices.
  */
 @property (nonatomic, assign)  BOOL enableMeasureHr;
 /**
- * 是否启用测量平衡,默认:YES,仅支持的设备有效
+ * Whether balance measurement is enabled. Default: YES. Only effective on supported devices.
  */
 @property (nonatomic, assign)  BOOL enableMeasureBalance;
 /**
- * 是否启用测量重心,默认:YES,仅支持的设备有效
+ * Whether centre-of-gravity measurement is enabled. Default: YES. Only effective on supported devices.
  */
 @property (nonatomic, assign)  BOOL enableMeasureGravity;
 /**
- * 是否启用小物模式,默认:YES,仅支持的设备有效
+ * Whether small-object mode is enabled. Default: YES. Only effective on supported devices.
  */
 @property (nonatomic, assign)  BOOL enableSmallThing;
 /**
- * 是否启动婴儿模式，默认:NO，仅支持的设备有效
+ * Whether baby mode is enabled. Default: NO. Only effective on supported devices.
  */
 @property (nonatomic, assign)  BOOL enableBabyMode;
 
 /**
- * 是否开启体围计算,对于37算法，默认是不支持的
+ * Whether girth calculation is enabled. Unsupported by the 37 algorithm family; default off there.
  */
 @property (nonatomic, assign)  BOOL enableGirth;
 
 /**
- 营养数据摄入列表
+ Nutrition-intake list.
  */
 @property (nonatomic, strong) NSArray<ICRNIData *> *rniList;
 

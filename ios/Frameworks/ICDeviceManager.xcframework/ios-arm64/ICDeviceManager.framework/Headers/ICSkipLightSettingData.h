@@ -13,22 +13,22 @@
 @interface ICSkipLightSettingParam : NSObject
 
 /**
- 红色(0~255)
+ Red channel (0-255).
  */
 @property (nonatomic, assign) NSUInteger r;
 
 /**
- 绿色(0~255)
+ Green channel (0-255).
  */
 @property (nonatomic, assign) NSUInteger g;
 
 /**
- 蓝色(0~255)
+ Blue channel (0-255).
  */
 @property (nonatomic, assign) NSUInteger b;
 
 /**
- 速度(0~255)
+ Mode speed / rate (0-255).
  */
 @property (nonatomic, assign) NSUInteger modeValue;
 

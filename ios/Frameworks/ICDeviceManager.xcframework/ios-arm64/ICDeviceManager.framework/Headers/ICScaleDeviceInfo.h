@@ -70,7 +70,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, assign) BOOL enableMeasureGravity;
 
 /**
- * 是否启动婴儿模式，默认:NO，仅支持的设备有效
+ * Whether baby mode is enabled. Default: NO. Only effective on supported devices.
  */
 @property(nonatomic, assign) BOOL enableBabyMode;
 
@@ -81,12 +81,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, strong) NSArray<NSNumber *> *listSupportUIItem;
 
 /**
- * 是否支持通过setting更新用户信息。
+ * Whether the device supports updating user info via the settings API.
  */
 @property(nonatomic, assign) BOOL isSettingUpdateUsers;
 
 /**
- * http证书版本
+ * HTTPS certificate version.
  */
 @property(nonatomic, assign) NSUInteger httpsCertificateVer;
 

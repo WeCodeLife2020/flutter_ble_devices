@@ -11,21 +11,21 @@
 
 NS_ASSUME_NONNULL_BEGIN
 /**
- RNI历史数据
+ RNI (Recommended Nutrient Intake) history data.
  */
 @interface ICRNIHistoryData : NSObject
 
 /**
- 月
+ Month.
  */
 @property (nonatomic, assign) NSUInteger month;
 /**
- 日
+ Day.
  */
 @property (nonatomic, assign) NSUInteger day;
 
 /**
- 营养摄入列表
+ List of nutrient-intake entries.
  */
 @property (nonatomic, strong) NSArray<ICRNIData *> *rnis;
 

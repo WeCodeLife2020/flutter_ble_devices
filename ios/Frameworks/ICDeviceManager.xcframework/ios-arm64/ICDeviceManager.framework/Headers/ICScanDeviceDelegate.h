@@ -8,14 +8,14 @@
 @class ICScanDeviceInfo;
 
 /**
- 扫描结果回调代理
+ Delegate for scan-result callbacks.
  */
 @protocol ICScanDeviceDelegate <NSObject>
 
 /**
- 扫描结果回调
+ Scan-result callback.
 
- @param deviceInfo 扫描到的设备
+ @param deviceInfo The scanned device info.
  */
 - (void)onScanResult:(ICScanDeviceInfo *)deviceInfo;
 

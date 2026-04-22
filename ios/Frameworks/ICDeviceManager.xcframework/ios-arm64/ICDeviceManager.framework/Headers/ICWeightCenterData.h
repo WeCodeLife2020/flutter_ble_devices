@@ -11,103 +11,103 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /**
- 体重重心数据
+ Centre-of-gravity data for a weight measurement.
  */
 @interface ICWeightCenterData : NSObject
 
 /**
- 数据是否稳定, 不稳定的数据只做展示用，请勿保存
+ Whether the sample is stable. Unstable samples are for display only and should not be persisted.
  */
 @property (nonatomic, assign) BOOL isStabilized;
 
 /**
- 测量时间戳(秒)
+ Measurement timestamp (seconds).
  */
 @property (nonatomic, assign) NSUInteger time;
 
 /**
- kg体重小数点位数,如:weight=70.12,则precision=2，weight=71.5,则precision_kg=1
+ Decimal precision for kg weight. e.g. weight=70.12 → precision=2; weight=71.5 → precision_kg=1.
  */
 @property (nonatomic, assign) NSUInteger precision_kg;
 
 /**
- lb体重小数点位数,如:weight=70.12,则precision=2，weight=71.5,则precision_lb=1
+ Decimal precision for lb weight. e.g. weight=70.12 → precision=2; weight=71.5 → precision_lb=1.
  */
 @property (nonatomic, assign) NSUInteger precision_lb;
 
 /**
- st:lb体重小数点位数
+ Decimal precision for st:lb weight.
  */
 @property (nonatomic, assign) NSUInteger precision_st_lb;
 
 /**
- kg分度值
+ Scale division for kg.
  */
 @property (nonatomic, assign) NSUInteger kg_scale_division;
 
 /**
- lb分度值
+ Scale division for lb.
  */
 @property (nonatomic, assign) NSUInteger lb_scale_division;
 
 /**
- 左边体重(g)
+ Left-side weight (grams).
  */
 @property (nonatomic, assign) NSUInteger left_weight_g;
 
 /**
- 右边体重(g)
+ Right-side weight (grams).
  */
 @property (nonatomic, assign) NSUInteger right_weight_g;
 
 
 /**
- 左边体重占比(%)
+ Left-side weight percentage (%).
  */
 @property (nonatomic, assign) float leftPercent;
 
 /**
- 右边体重占比(%)
+ Right-side weight percentage (%).
  */
 @property (nonatomic, assign) float rightPercent;
 
 /**
- 左边体重(kg)
+ Left-side weight (kg).
  */
 @property (nonatomic, assign) float left_weight_kg;
 
 /**
- 右边体重(kg)
+ Right-side weight (kg).
  */
 @property (nonatomic, assign) float right_weight_kg;
 
 /**
- 左边体重(lb)
+ Left-side weight (lb).
  */
 @property (nonatomic, assign) float left_weight_lb;
 
 /**
- 右边体重(lb)
+ Right-side weight (lb).
  */
 @property (nonatomic, assign) float right_weight_lb;
 
 /**
- 左边体重(st:lb)
+ Left-side weight, stones component (st:lb).
  */
 @property (nonatomic, assign) NSUInteger left_weight_st;
 
 /**
- 右边体重(st:lb)
+ Right-side weight, stones component (st:lb).
  */
 @property (nonatomic, assign) NSUInteger right_weight_st;
 
 /**
- 左边体重(st:lb)
+ Left-side weight, pounds remainder in st:lb notation.
  */
 @property (nonatomic, assign) float left_weight_st_lb;
 
 /**
- 右边体重(st:lb)
+ Right-side weight, pounds remainder in st:lb notation.
  */
 @property (nonatomic, assign) float right_weight_st_lb;
 

@@ -3,7 +3,7 @@
 //  ICDeviceManager
 //
 //  Created by Symons on 2018/7/27.
-//  Copyright © 2018年 Symons. All rights reserved.
+//  Copyright (c) 2018 Symons. All rights reserved.
 //
 
 #import <Foundation/Foundation.h>
@@ -16,82 +16,82 @@
 @interface ICDeviceManager : NSObject
 
 /**
- 数据以及状态回调
+ Data and state callback delegate.
  */
 @property (nonatomic, weak) id<ICDeviceManagerDelegate> delegate;
 
 /**
- 设置SDK运行模式
+ Set the SDK running mode.
  */
 - (void)setSDKMode:(ICSDKMode)sdkMode;
 
 /**
- 获取SDK运行模式
+ Return the SDK running mode.
  */
 - (ICSDKMode)getSDKMode;
 
 /**
- 蓝牙设备管理单例对象
- 
- @return 蓝牙设备管理单例对象
+ Shared Bluetooth device manager instance.
+
+ @return The singleton instance.
  */
 + (instancetype)shared;
 
 /**
- 初始化SDK(默认配置)
+ Initialise the SDK with default configuration.
  */
 - (void)initMgr;
 
 /**
- 使用配置类来初始化SDK
- 
- @param config 配置项
+ Initialise the SDK with a config object.
+
+ @param config Configuration.
  */
 - (void)initMgrWithConfig:(ICDeviceManagerConfig *)config;
 
 /**
-释放
+ Release SDK resources.
 */
 - (void)deInit;
 
 /**
- 更新用户信息
+ Update the current user info.
 
- @param userInfo 用户信息
+ @param userInfo User info.
  */
 - (void)updateUserInfo:(ICUserInfo *)userInfo;
 
 - (void)setUserList:(NSArray<ICUserInfo *> *)userlist;
 
 /**
- 扫描设备
- 
- @param delegate 扫描回调
+ Start scanning for devices.
+
+ @param delegate Scan-result delegate.
  */
 - (void)scanDevice:(id<ICScanDeviceDelegate>)delegate;
 
 /**
- 停止扫描
+ Stop scanning.
  */
 - (void)stopScan;
 
 /**
- 添加设备
+ Add a device.
  */
 - (void)addDevice:(ICDevice *)device callback:(ICAddDeviceCallBack)callback;
 
 /**
- 添加设备列表(注:有多少个device就会通过block回调多少次)
+ Add a list of devices. The block is invoked once per device.
  */
 - (void)addDevices:(NSArray<ICDevice *> *)devices callback:(ICAddDeviceCallBack)callback;
 
 /**
- 删除设备
+ Remove a device.
  */
 - (void)removeDevice:(ICDevice *)device callback:(ICRemoveDeviceCallBack)callback;
 
 /**
- 删除设备列表(注:有多少个device就会通过block回调多少次)
+ Remove a list of devices. The block is invoked once per device.
  */
 - (void)removeDevices:(NSArray<ICDevice *> *)devices callback:(ICRemoveDeviceCallBack)callback;
 
@@ -103,36 +103,36 @@
 
 
 /**
- 获取设备设置接口
- 
- @return 设备设置接口实例
+ Return the device-setting protocol instance.
+
+ @return Setting-manager instance.
  */
 - (id<ICDeviceManagerSettingManager>)getSettingManager;
 
 /**
- 获取体脂算法接口
+ Return the body-fat algorithm protocol instance.
 
- @return 体脂算法接口实例
+ @return Body-fat algorithm instance.
  */
 - (id<ICBodyFatAlgorithmsManager>)getBodyFatAlgorithmsManager;
 
 /**
- 蓝牙是否已经开启
- @notice 请在初始化回调成功后再调用，否则将返回NO
+ Whether Bluetooth is on.
+ @notice Only call after the init callback reports success; otherwise the return value is NO.
  */
 - (BOOL)isBLEEnable;
 
 /**
- SDK版本
- 
- @return SDK版本
+ SDK version.
+
+ @return SDK version string.
  */
 + (NSString *)version;
 
 /**
- sdk日志文件夹路径,仅保留最近7天的日志
+ Path of the SDK log directory. Only the last 7 days of logs are retained.
 
- @return 日志文件夹路径
+ @return Log-directory path.
  */
 - (NSString *)getLogPath;
 

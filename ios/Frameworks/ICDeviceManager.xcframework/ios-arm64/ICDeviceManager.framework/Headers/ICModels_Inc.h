@@ -3,7 +3,7 @@
 //  ICDeviceManager
 //
 //  Created by Symons on 2018/7/28.
-//  Copyright © 2018年 Symons. All rights reserved.
+//  Copyright (c) 2018 Symons. All rights reserved.
 //
 
 #ifndef model_inc_h

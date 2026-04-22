@@ -3,18 +3,18 @@
 //  ICDeviceManager
 //
 //  Created by Symons on 2018/7/28.
-//  Copyright © 2018年 Symons. All rights reserved.
+//  Copyright (c) 2018 Symons. All rights reserved.
 //
 
 #import <Foundation/Foundation.h>
 
 /**
- 沃莱设备类
+ Icomon (Welland) device class.
  */
 @interface ICDevice : NSObject
 
 /**
- 设备mac地址
+ Device MAC address.
  */
 @property (nonatomic, copy) NSString *macAddr;
 

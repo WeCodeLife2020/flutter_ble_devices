@@ -3,157 +3,157 @@
 //  ICDeviceManager
 //
 //  Created by Symons on 2018/8/20.
-//  Copyright © 2018年 Symons. All rights reserved.
+//  Copyright (c) 2018 Symons. All rights reserved.
 //
 
 #import <Foundation/Foundation.h>
 #import "ICConstant.h"
 
 /**
- 厨房秤数据
+ Kitchen-scale measurement data.
  */
 @interface ICKitchenScaleData : NSObject
 
 /**
- 数据是否稳定数, 不稳定的数据只做展示用，请勿保存
+ Whether the reading is stable. Unstable readings are for display only and should not be persisted.
  */
 @property (nonatomic, assign) BOOL isStabilized;
 
 /**
- 数据值,单位:mg
+ Value in milligrams.
  */
 @property (nonatomic, assign) NSUInteger value_mg;
 
 /**
- 数据值,单位:G
+ Value in grams.
  */
 @property (nonatomic, assign) float value_g;
 
 /**
- 数据值,单位:ml
+ Value in millilitres (water).
  */
 @property (nonatomic, assign) float value_ml;
 
 /**
- 数据值,单位:ml milk
+ Value in millilitres of milk.
  */
 @property (nonatomic, assign) float value_ml_milk;
 
 /**
- 数据值,单位:oz
+ Value in ounces.
  */
 @property (nonatomic, assign) float value_oz;
 
 /**
- 数据值,单位:lb:oz中的lb
+ Value (pounds component of lb:oz).
  */
 @property (nonatomic, assign) NSUInteger value_lb;
 
 /**
- 数据值,单位:lb:oz中的oz
+ Value (ounces component of lb:oz).
  */
 @property (nonatomic, assign) float value_lb_oz;
 
 /**
- 数据值,单位:fl.oz
+ Value in fluid ounces.
  */
 @property (nonatomic, assign) float value_fl_oz;
 
 /**
- 数据值,单位:fl.oz，英制
+ Value in UK fluid ounces.
  */
 @property (nonatomic, assign) float value_fl_oz_uk;
 
 /**
- 数据值,单位:fl.oz,美制
+ Value in US fluid ounces (milk).
  */
 @property (nonatomic, assign) float value_fl_oz_milk;
 
 /**
- 数据值,单位:fl.oz，英制
+ Value in UK fluid ounces (milk).
  */
 @property (nonatomic, assign)  float value_fl_oz_milk_uk;
 /**
- 测量时间戳(秒)
+ Measurement timestamp (seconds).
  */
 @property (nonatomic, assign) NSUInteger time;
 
 /**
- 用户ID
+ User ID.
  */
 @property (nonatomic, assign) NSUInteger userId;
 
 /**
- 食物ID
+ Food ID.
  */
 @property (nonatomic, assign) NSUInteger foodId;
 
 /**
- 本次数据单位
+ Unit used for this reading.
  */
 @property (nonatomic, assign) ICKitchenScaleUnit unit;
 
 /**
- 小数点位数,如:value_g=70.12,则precision=2，value_g=71.5,则precision=1
+ Decimal precision. e.g. value_g=70.12 → precision=2; value_g=71.5 → precision=1.
  */
 @property (nonatomic, assign) NSUInteger precision;
 /**
- 小数点位数,如:value_lb=70.12,则precision=2，value_lb=71.5,则precision=1
+ Decimal precision for grams.
  */
 @property (nonatomic, assign) NSUInteger precision_g ;
 /**
- 小数点位数,如:value_lb=70.12,则precision=2，value_lb=71.5,则precision=1
+ Decimal precision for millilitres.
  */
 @property (nonatomic, assign) NSUInteger precision_ml ;
 /**
- 小数点位数,如:value_lb=70.12,则precision=2，value_lb=71.5,则precision=1
+ Decimal precision for lb:oz.
  */
 @property (nonatomic, assign) NSUInteger precision_lboz ;
 /**
- 小数点位数,如:value_lb=70.12,则precision=2，value_lb=71.5,则precision=1
+ Decimal precision for ounces.
  */
 @property (nonatomic, assign) NSUInteger precision_oz ;
 /**
- 小数点位数,如:value_lb=70.12,则precision=2，value_lb=71.5,则precision=1
+ Decimal precision for millilitres of milk.
  */
 @property (nonatomic, assign) NSUInteger precision_ml_milk ;
 /**
- 小数点位数,如:value_lb=70.12,则precision=2，value_lb=71.5,则precision=1
+ Decimal precision for US fluid ounces.
  */
 @property (nonatomic, assign) NSUInteger precision_floz_us ;
 /**
- 小数点位数,如:value_lb=70.12,则precision=2，value_lb=71.5,则precision=1
+ Decimal precision for UK fluid ounces.
  */
 @property (nonatomic, assign) NSUInteger precision_floz_uk ;
 /**
- 小数点位数,如:value_lb=70.12,则precision=2，value_lb=71.5,则precision=1
+ Decimal precision for US fluid ounces of milk.
  */
 @property (nonatomic, assign) NSUInteger precision_floz_milk_us ;
 /**
- 小数点位数,如:value_lb=70.12,则precision=2，value_lb=71.5,则precision=1
+ Decimal precision for UK fluid ounces of milk.
  */
 @property (nonatomic, assign) NSUInteger precision_floz_milk_uk ;
 
 /**
-  设备数据单位类型,0:公制，1:美制，2:英制
+ Device unit system. 0: metric, 1: US, 2: UK.
  */
 @property (nonatomic, assign) NSUInteger unitType;
 
 
 /**
- 数字是否负数
+ Whether the value is negative.
  */
 @property (nonatomic, assign) BOOL isNegative;
 
 /**
- 是否去皮模式
+ Whether the tare mode is active.
  */
 @property (nonatomic, assign) BOOL isTare;
 
 
 
 /**
- * 是否按键确认数据
+ * Whether the reading was confirmed by a button press.
  */
 @property (nonatomic, assign) BOOL isConfirm;
 

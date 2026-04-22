@@ -10,27 +10,27 @@
 
 NS_ASSUME_NONNULL_BEGIN
 /**
- RNI数据
+ RNI (Recommended Nutrient Intake) data.
  */
 @interface ICRNIData : NSObject
 
 /**
- 数据类型
+ Data type.
  */
 @property (nonatomic, assign) NSUInteger type;
 
 /**
- 当前摄入量
+ Current intake amount.
  */
 @property (nonatomic, assign) float current;
 
 /**
- 最大摄入量或目标摄入量
+ Maximum or target intake amount.
  */
 @property (nonatomic, assign) float max;
 
 /**
- 进度,范围: 0~100%
+ Progress percentage in the range 0-100%.
  */
 @property (nonatomic, assign) float progress;
 

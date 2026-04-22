@@ -10,20 +10,20 @@
 
 NS_ASSUME_NONNULL_BEGIN
 /**
- 营养成份
+ Nutrition fact entry.
  */
 @interface ICNutritionFact : NSObject
 
 ///**
-// 食物ID，如不需要填0
+// Food ID. Set to 0 when not required.
 // */
 //@property (nonatomic, assign) NSUInteger foodId;
 /**
- 营养数据类型
+ Nutrition data type.
  */
 @property (nonatomic, assign) NSUInteger type;
 /**
- 营养数值
+ Nutrition value.
  */
 @property (nonatomic, assign) float value;
 

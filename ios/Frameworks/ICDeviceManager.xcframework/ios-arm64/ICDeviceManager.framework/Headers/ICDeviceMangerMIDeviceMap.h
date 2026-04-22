@@ -14,27 +14,27 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ICDeviceMangerMIDeviceMap : NSObject
 
 /**
- 设备类型
+ Device type.
  */
 @property (nonatomic, assign) ICDeviceType type;
 
 /**
- 设备通讯方式
+ Device communication method.
  */
 @property (nonatomic, assign) ICDeviceCommunicationType communicationType;
 
 /**
-设备子类型
+ Device sub-type.
  */
 @property (nonatomic, assign) int subType;
 
 /**
- 其他标志
+ Other flag bits.
  */
 @property (nonatomic, assign) NSUInteger otherFlag;
 
 /**
- 米家产品ID
+ MIJIA product ID.
  */
 @property (nonatomic, assign) NSUInteger productId;
 

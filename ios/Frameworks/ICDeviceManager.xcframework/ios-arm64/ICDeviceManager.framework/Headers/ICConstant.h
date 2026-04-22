@@ -3,7 +3,7 @@
 //  ICDeviceManager
 //
 //  Created by Symons on 2018/7/28.
-//  Copyright © 2018年 Symons. All rights reserved.
+//  Copyright (c) 2018 Symons. All rights reserved.
 //
 
 #ifndef ICConstant_h
@@ -15,108 +15,108 @@
 
 
 /**
- 设备类型
+ Device type
  **/
 typedef NS_ENUM(NSUInteger, ICDeviceType)
 {
     /**
-     * 未知
+     * Unknown
      **/
     ICDeviceTypeUnKnown = 0,
     
     /**
-     * 体重秤
+     * Weight scale
      **/
     ICDeviceTypeWeightScale,
     
     /**
-     * 脂肪秤
+     * Body-fat scale
      **/
     ICDeviceTypeFatScale,
 
     /**
-     * 脂肪秤(带温度显示)
+     * Body-fat scale with temperature display
      **/
     ICDeviceTypeFatScaleWithTemperature,
     
     /**
-     * 厨房秤
+     * Kitchen scale
      **/
     ICDeviceTypeKitchenScale,
 
     /**
-     * 围尺
+     * Tape measure
      **/
     ICDeviceTypeRuler,
 
     /**
-     * 平衡秤
+     * Balance scale
      **/
     ICDeviceTypeBalance,
 
     /**
-     * 跳绳
+     * Skipping rope
      **/
     ICDeviceTypeSkip,
 
     /**
-     * HR(心率带，支持心率等的设备)
+     * HR (heart-rate strap / heart-rate device)
      **/
     ICDeviceTypeHR,
     
     /**
-     * Sphygmomanometer(血压计)
+     * Sphygmomanometer (blood-pressure monitor)
      **/
     ICDeviceTypeSphygmomanometer,
 };
 
 /**
- 设备子类型
+ Device sub-type
  **/
 typedef NS_ENUM(NSUInteger, ICDeviceSubType)
 {
     /**
-     * 默认
+     * Default
      **/
     ICDeviceSubTypeDefault = 0,
     
     /**
-     * 8电极设备
+     * 8-electrode device
      **/
     ICDeviceSubTypeEightElectrode,
     
     /**
-     * 身高设备
+     * Height-enabled device
      **/
     ICDeviceSubTypeHeight,
     /**
-     * 8电极设备2
+     * 8-electrode device (variant 2)
      **/
     ICDeviceSubTypeEightElectrode2,
     /**
-     * 双模设备
+     * Dual-mode device
      **/
     ICDeviceSubTypeScaleDual,
     /**
-     * 跳绳带灯效
+     * Skipping rope with light effects
      **/
     ICDeviceSubTypeLightEffect,
     /**
-     * 彩屏秤
+     * Colour-display scale
      **/
     ICDeviceSubTypeColor,
     /**
-     * 跳绳带语音
+     * Skipping rope with voice
      **/
     ICDeviceSubTypeSound,
 
     /**
-     * 跳绳带灯效和语音
+     * Skipping rope with light effects and voice
      **/
     ICDeviceSubTypeLightAndSound,
     
     /**
-     * 基站
+     * Base station
     */
     ICDeviceSubTypeBaseSt,
     
@@ -126,81 +126,81 @@ typedef NS_ENUM(NSUInteger, ICDeviceSubType)
     ICDeviceSubTypeRopeS2,
     
     /**
-     * 走新的逻辑的秤
+     * Scale using the new protocol path
      */
     ICDeviceSubTypeNewScale,
     /**
-     * W设备
+     * W-series device
      */
     ICDeviceSubTypeW
 };
 
 /**
- 设备通讯方式
+ Device communication mode
  
  */
 typedef NS_ENUM(NSUInteger, ICDeviceCommunicationType) {
     /**
-     未知
+     Unknown
      */
     ICDeviceCommunicationTypeUnknown,
     
     /**
-     连接式
+     Connection-based
      */
     ICDeviceCommunicationTypeConnect,
     
     /**
-     广播式
+     Broadcast-based
      */
     ICDeviceCommunicationTypeBroadcast,
 };
 
 /**
- 蓝牙状态
+ Bluetooth state
  */
 typedef NS_ENUM(NSUInteger, ICBleState)
 {
     /**
-     * 未知状态
+     * Unknown state
      **/
     ICBleStateUnknown = 0,
     
     /**
-     * 手机不支持BLE
+     * Phone does not support BLE
      **/
     ICBleStateUnsupported,
     
     /**
-     * 应用未获取蓝牙授权
+     * App has not been granted Bluetooth permission
      **/
     ICBleStateUnauthorized,
     
     /**
-     * 蓝牙关闭
+     * Bluetooth is off
      **/
     ICBleStatePoweredOff,
     
     /**
-     * 蓝牙打开
+     * Bluetooth is on
      **/
     ICBleStatePoweredOn,
 };
 
 
 /**
- 设备连接状态
+ Device connection state
  
  */
 typedef NS_ENUM(NSUInteger, ICDeviceConnectState)
 {
     /**
-     * 已连接
+     * Connected
      **/
     ICDeviceConnectStateConnected,
     
     /**
-     * 已断开
+     * Disconnected
      **/
     ICDeviceConnectStateDisconnected,
 };
@@ -208,167 +208,167 @@ typedef NS_ENUM(NSUInteger, ICDeviceConnectState)
 
 
 /**
- * 添加设备回调代码
+ * Add-device callback code
  */
 typedef NS_ENUM(NSUInteger, ICAddDeviceCallBackCode)
 {
     /**
-     * 添加成功
+     * Added successfully
      */
     ICAddDeviceCallBackCodeSuccess,
     
     /**
-     * 添加失败,SDK未初始化
+     * Add failed: SDK not initialised
      */
     ICAddDeviceCallBackCodeFailedAndSDKNotInit,
     
     /**
-     * 添加失败，设备已存在
+     * Add failed: device already exists
      */
     ICAddDeviceCallBackCodeFailedAndExist,
     
     /**
-     * 添加失败，设备参数有错
+     * Add failed: invalid device parameters
      */
     ICAddDeviceCallBackCodeFailedAndDeviceParamError,
 };
 
 /**
- 添加设备回调
+ Add-device callback
  */
 typedef void(^ICAddDeviceCallBack)(ICDevice *device, ICAddDeviceCallBackCode code);
 
 
 /**
- * 删除设备回调代码
+ * Remove-device callback code
  */
 typedef NS_ENUM(NSUInteger, ICRemoveDeviceCallBackCode)
 {
     /**
-     * 删除成功
+     * Removed successfully
      */
     ICRemoveDeviceCallBackCodeSuccess,
     
     /**
-     * 删除失败,SDK未初始化
+     * Remove failed: SDK not initialised
      */
     ICRemoveDeviceCallBackCodeFailedAndSDKNotInit,
     
     /**
-     * 删除失败，设备不存在
+     * Remove failed: device does not exist
      */
     ICRemoveDeviceCallBackCodeFailedAndNotExist,
     
     /**
-     * 删除失败，设备参数有错
+     * Remove failed: invalid device parameters
      */
     ICRemoveDeviceCallBackCodeFailedAndDeviceParamError,
 };
 
 /**
- 删除设备回调
+ Remove-device callback
  */
 typedef void(^ICRemoveDeviceCallBack)(ICDevice *device, ICRemoveDeviceCallBackCode code);
 
 
 
 /**
- 设置回调错误代码
+ Setting-callback result code
  
  */
 typedef NS_ENUM(NSUInteger, ICSettingCallBackCode)
 {
     /**
-     * 设置成功
+     * Set successfully
      **/
     ICSettingCallBackCodeSuccess = 0,
     
     /**
-     * 设置失败，SDK没有初始化
+     * Failed: SDK not initialised
      **/
     ICSettingCallBackCodeSDKNotInit,
     
     /**
-     * 设置失败，SDK没有启动
+     * Failed: SDK not started
      **/
     ICSettingCallBackCodeSDKNotStart,
     
     /**
-     * 设置失败，找不到设备或者设备未连接，请等待设备连接上后再设置
+     * Failed: device not found or not connected. Wait for the device to connect before applying the setting
      **/
     ICSettingCallBackCodeDeviceNotFound,
     
     /**
-     * 设置失败，设备不支持该功能
+     * Failed: device does not support this function
      **/
     ICSettingCallBackCodeFunctionIsNotSupport,
     
     /**
-     * 设置失败，设备已断开
+     * Failed: device has disconnected
      **/
     ICSettingCallBackCodeDeviceDisConnected,
     
     /**
-     * 设置失败，无效参数
+     * Failed: invalid parameter
      **/
     ICSettingCallBackCodeInvalidParameter,
 
     /**
-     * 设置失败,请等待上一个任务结束
+     * Failed: wait for the previous task to finish
      **/
     ICSettingCallBackCodeWaitLastTaskOver,
 
     /**
-     * 设置失败
+     * Failed
      **/
     ICSettingCallBackCodeFailed,
 };
 
 /**
- 体重秤单位
+ Weight-scale unit
  */
 typedef NS_ENUM(NSUInteger, ICWeightUnit)
 {
     
     /**
-     * 公斤
+     * Kilograms (kg)
      */
     ICWeightUnitKg = 0,
     
     /**
-     * 磅
+     * Pounds (lb)
      */
     ICWeightUnitLb,
     
     /**
-     * 英石
+     * Stones (st)
      */
     ICWeightUnitSt,
     
     /**
-     * 斤
+     * Jin (Chinese market pound)
      */
     ICWeightUnitJin
 };
 
 
 /**
- 围尺单位
+ Tape-measure unit
  */
 typedef NS_ENUM(NSUInteger, ICRulerUnit)
 {
     
     /**
-     * 厘米cm
+     * Centimetres (cm)
      */
     ICRulerUnitCM = 1,
     
     /**
-     * 英寸inch
+     * Inches (in)
      */
     ICRulerUnitInch,
     /**
-     * 英尺'英寸
+     * Feet'inches (ft'in)
      */
     ICRulerUnitFtInch,
 
@@ -376,18 +376,18 @@ typedef NS_ENUM(NSUInteger, ICRulerUnit)
 
 
 /**
- 围尺测量模式
+ Tape-measure mode
  */
 typedef NS_ENUM(NSUInteger, ICRulerMeasureMode)
 {
     
     /**
-     * 长度模式
+     * Length mode
      */
     ICRulerMeasureModeLength = 0,
     
     /**
-     * 围度模式
+     * Girth mode
      */
     ICRulerMeasureModeGirth,
     
@@ -396,13 +396,13 @@ typedef NS_ENUM(NSUInteger, ICRulerMeasureMode)
 
 
 /**
- 厨房秤单位
+ Kitchen-scale unit
  */
 typedef NS_ENUM(NSUInteger, ICKitchenScaleUnit)
 {
     
     /**
-     * 克
+     * Grams (g)
      */
     ICKitchenScaleUnitG,
 
@@ -412,70 +412,70 @@ typedef NS_ENUM(NSUInteger, ICKitchenScaleUnit)
     ICKitchenScaleUnitMl,
 
     /**
-     * 磅
+     * Pounds (lb)
      */
     ICKitchenScaleUnitLb,
     
     /**
-     * 盎司
+     * Ounces (oz)
      */
     ICKitchenScaleUnitOz,
     /**
-     * 毫克
+     * Milligrams (mg)
      */
     ICKitchenScaleUnitMg,
     /**
-     * ml(牛奶)
+     * Millilitres (milk)
      */
     ICKitchenScaleUnitMlMilk,
     /**
-     * 盎司(水)
+     * Fluid ounces (water)
      */
     ICKitchenScaleUnitFlOzWater,
     /**
-     * 盎司(牛奶)
+     * Fluid ounces (milk)
      */
     ICKitchenScaleUnitFlOzMilk
 };
 
 
 /**
- 围尺设置的部位类型
+ Body-part type used by the tape-measure mode
  */
 typedef NS_ENUM(NSUInteger, ICRulerBodyPartsType)
 {
     /**
-     * 肩膀
+     * Shoulder
      */
     ICRulerPartsTypeShoulder = 1,
     
     /**
-     * 手臂
+     * Upper arm / bicep
      */
     ICRulerPartsTypeBicep,
     
     /**
-     * 胸
+     * Chest
      */
     ICRulerPartsTypeChest,
 
     /**
-     * 腰
+     * Waist
      */
     ICRulerPartsTypeWaist,
     
     /**
-     * 臀
+     * Hip
      */
     ICRulerPartsTypeHip,
     
     /**
-     * 大腿
+     * Thigh
      */
     ICRulerPartsTypeThigh,
     
     /**
-     * 小腿
+     * Calf
      */
     ICRulerPartsTypeCalf,
     
@@ -483,350 +483,350 @@ typedef NS_ENUM(NSUInteger, ICRulerBodyPartsType)
 };
 
 /**
- 性别
+ Sex
  */
 typedef NS_ENUM(NSInteger,ICSexType)
 {
     /**
-     * 未知/保密
+     * Unknown / undisclosed
      */
     ICSexTypeUnknown = 0,
 
     /**
-     * 男
+     * Male
      */
     ICSexTypeMale = 1,
     
     /**
-     * 女
+     * Female
      */
     ICSexTypeFemal
 };
 
 /**
- 厨房秤营养成分类型
+ Kitchen-scale nutrition-fact type
  */
 typedef NS_ENUM(NSUInteger, ICKitchenScaleNutritionFactType) {
     /*
-     *  卡路里, 最大不超过4294967295
+     *  Calories (maximum: 4294967295)
      */
     ICKitchenScaleNutritionFactTypeCalorie,
     
     /*
-     *  总卡路里, 最大不超过4294967295
+     *  Total calories (maximum: 4294967295)
      */
     ICKitchenScaleNutritionFactTypeTotalCalorie,
     
     /*
-     *  总脂肪
+     *  Total fat
      */
     ICKitchenScaleNutritionFactTypeTotalFat,
     
     /*
-     *  总蛋白质
+     *  Total protein
      */
     ICKitchenScaleNutritionFactTypeTotalProtein,
     
     /*
-     *  总碳水化合物
+     *  Total carbohydrates
      */
     ICKitchenScaleNutritionFactTypeTotalCarbohydrates,
     
     /*
-     *  总脂肪纤维
+     *  Total dietary fibre
      */
     ICKitchenScaleNutritionFactTypeTotalFiber,
     
     /*
-     *  总胆固醇
+     *  Total cholesterol
      */
     ICKitchenScaleNutritionFactTypeTotalCholesterd,
     
     /*
-     *  总钠含量
+     *  Total sodium
      */
     ICKitchenScaleNutritionFactTypeTotalSodium,
     
     /*
-     *  总糖含量
+     *  Total sugar
      */
     ICKitchenScaleNutritionFactTypeTotalSugar,
     
     /*
-     * 脂肪
+     * Fat
      */
     ICKitchenScaleNutritionFactTypeFat,
     
     /*
-     * 蛋白质
+     * Protein
      */
     ICKitchenScaleNutritionFactTypeProtein,
     
     /*
-     * 碳水化合物
+     * Carbohydrates
      */
     ICKitchenScaleNutritionFactTypeCarbohydrates,
     
     /*
-     * 膳食纤维
+     * Dietary fibre
      */
     ICKitchenScaleNutritionFactTypeFiber,
     
     /*
-     * 胆固醇
+     * Cholesterol
      */
     ICKitchenScaleNutritionFactTypeCholesterd,
     
     /*
-     * 钠含量
+     * Sodium
      */
     ICKitchenScaleNutritionFactTypeSodium,
     
     /*
-     * 糖含量
+     * Sugar
      */
     ICKitchenScaleNutritionFactTypeSugar,
 };
 
 /**
- 算法版本
+ Body-fat algorithm version
  */
 typedef enum : NSUInteger {
 #if ENABLE_WLA01
     /*
-     * 含水肌肉率
+     * With-water muscle-percentage algorithm
      */
     ICBFATypeWLA01 = 0,
 #endif
 #if ENABLE_WLA02
     /*
-     * 不含水肌肉率
+     * Without-water muscle-percentage algorithm
      */
     ICBFATypeWLA02 = 1,
 #endif
 #if ENABLE_WLA03
     /*
-     * 新算法1
+     * New algorithm 1
      */
     ICBFATypeWLA03 = 2,
 #endif
 #if ENABLE_WLA04
     /*
-     * 新算法2
+     * New algorithm 2
      */
     ICBFATypeWLA04 = 3,
 #endif
 #if ENABLE_WLA05
     /*
-     * 新算法3
+     * New algorithm 3
      */
     ICBFATypeWLA05 = 4,
 #endif
 #if ENABLE_WLA06
     /*
-     * 新算法4
+     * New algorithm 4
      */
     ICBFATypeWLA06 = 5,
 #endif
 #if ENABLE_WLA07
     /*
-     * 新算法WLA07
+     * WLA07 algorithm
      */
     ICBFATypeWLA07 = 6,
 #endif
 #if ENABLE_WLA08
     /*
-     * 新算法WLA08
+     * WLA08 algorithm
      */
     ICBFATypeWLA08 = 7,
 #endif
 #if ENABLE_WLA09
     /*
-     * 新算法WLA09
+     * WLA09 algorithm
      */
     ICBFATypeWLA09 = 8,
 #endif
 #if ENABLE_WLA10
     /*
-     * 新算法WLA10
+     * WLA10 algorithm
      */
     ICBFATypeWLA10 = 9,
 #endif
 #if ENABLE_WLA11
     /*
-     * 新算法WLA11
+     * WLA11 algorithm
      */
     ICBFATypeWLA11 = 10,
 #endif
 #if ENABLE_WLA12
     /*
-     * 新算法WLA12
+     * WLA12 algorithm
      */
     ICBFATypeWLA12 = 11,
 #endif
 #if ENABLE_WLA13
     /*
-     * 新算法WLA13
+     * WLA13 algorithm
      */
     ICBFATypeWLA13 = 12,
 #endif
 #if ENABLE_WLA14
     /*
-     * 新算法WLA14
+     * WLA14 algorithm
      */
     ICBFATypeWLA14 = 13,
 #endif
 #if ENABLE_WLA15
     /*
-     * 新算法WLA15
+     * WLA15 algorithm
      */
     ICBFATypeWLA15 = 14,
 #endif
 #if ENABLE_WLA16
     /*
-     * 新算法WLA16
+     * WLA16 algorithm
      */
     ICBFATypeWLA16 = 15,
 #endif
 #if ENABLE_WLA17
     /*
-     * 新算法WLA17
+     * WLA17 algorithm
      */
     ICBFATypeWLA17 = 16,
 #endif
 #if ENABLE_WLA18
     /*
-     * 新算法WLA18
+     * WLA18 algorithm
      */
     ICBFATypeWLA18 = 17,
 #endif
 #if ENABLE_WLA19
     /*
-     * 新算法WLA19
+     * WLA19 algorithm
      */
     ICBFATypeWLA19 = 18,
 #endif
 #if ENABLE_WLA20
     /*
-     * 新算法WLA20
+     * WLA20 algorithm
      */
     ICBFATypeWLA20 = 19,
 #endif
 #if ENABLE_WLA22
     /*
-     * 新算法WLA22
+     * WLA22 algorithm
      */
     ICBFATypeWLA22 = 21,
 #endif
 #if ENABLE_WLA23
     /*
-     * 新算法WLA23
+     * WLA23 algorithm
      */
     ICBFATypeWLA23 = 22,
 #endif
 #if ENABLE_WLA24
     /*
-     * 新算法WLA24
+     * WLA24 algorithm
      */
     ICBFATypeWLA24 = 23,
 #endif
 #if ENABLE_WLA25
     /*
-     * 新算法WLA25
+     * WLA25 algorithm
      */
     ICBFATypeWLA25 = 24,
 #endif
 #if ENABLE_WLA26
     /*
-     * 新算法WLA26
+     * WLA26 algorithm
      */
     ICBFATypeWLA26 = 25,
 #endif
 #if ENABLE_WLA27
     /*
-     * 新算法WLA27
+     * WLA27 algorithm
      */
     ICBFATypeWLA27 = 26,
 #endif
 #if ENABLE_WLA28
     /*
-     * 新算法WLA28
+     * WLA28 algorithm
      */
     ICBFATypeWLA28 = 27,
 #endif
 #if ENABLE_WLA29
     /*
-     * 新算法WLA29
+     * WLA29 algorithm
      */
     ICBFATypeWLA29 = 28,
 #endif
 #if ENABLE_WLA30
     /*
-     * 新算法WLA30
+     * WLA30 algorithm
      */
     ICBFATypeWLA30 = 29,
 #endif
 #if ENABLE_WLA31
     /*
-     * 新算法WLA31
+     * WLA31 algorithm
      */
     ICBFATypeWLA31 = 30,
 #endif
 #if ENABLE_WLA32
     /*
-     * 新算法WLA32
+     * WLA32 algorithm
      */
     ICBFATypeWLA32 = 31,
 #endif
 #if ENABLE_WLA33
     /*
-     * 新算法WLA33
+     * WLA33 algorithm
      */
     ICBFATypeWLA33 = 32,
 #endif
 #if ENABLE_WLA34
     /*
-     * 新算法WLA34
+     * WLA34 algorithm
      */
     ICBFATypeWLA34 = 33,
 #endif
 #if ENABLE_WLA35
     /*
-     * 新算法WLA35
+     * WLA35 algorithm
      */
     ICBFATypeWLA35 = 34,
 #endif
 #if ENABLE_WLA36
     /*
-     * 新算法WLA36
+     * WLA36 algorithm
      */
     ICBFATypeWLA36 = 35,
 #endif
 
 #if ENABLE_WLA37
     /*
-     * 新算法WLA37
+     * WLA37 algorithm
      */
     ICBFATypeWLA37 = 36,
 #endif
     
 #if ENABLE_WLA38
     /*
-     * 新算法WLA38
+     * WLA38 algorithm
      */
     ICBFATypeWLA38 = 37,
 #endif
     
 #if ENABLE_WLA39
     /*
-     * 新算法WLA39
+     * WLA39 algorithm
      */
     ICBFATypeWLA39 = 38,
 #endif
     
 #if ENABLE_WLA40
     /*
-     * 新算法WLA40
+     * WLA40 algorithm
      */
     ICBFATypeWLA40 = 39,
 #endif
@@ -834,7 +834,7 @@ typedef enum : NSUInteger {
     
 #if ENABLE_WLA1001
     /*
-     * 新算法WLA1001
+     * WLA1001 algorithm
      */
     ICBFATypeWLA1001 = 1000,
 #endif
@@ -845,56 +845,56 @@ typedef enum : NSUInteger {
 } ICBFAType;
 
 /**
- 用户类型
+ User type
  */
 typedef enum : NSUInteger {
     /*
-     * 普通人
+     * Normal person
      */
     ICPeopleTypeNormal,
 
     /*
-     * 运动员
+     * Athlete
      */
     ICPeopleTypeSportman,
 } ICPeopleType;
 
 /**
- 数据类型
+ Measurement-step data type
  */
 typedef enum : NSUInteger {
     /*
-     * 测量体重 (ICWeightData)
+     * Weight measurement (ICWeightData)
      */
     ICMeasureStepMeasureWeightData,
     
     /*
-     * 测量平衡 (ICWeightCenterData)
+     * Balance measurement (ICWeightCenterData)
      */
     ICMeasureStepMeasureCenterData,
     
     /*
-     * 开始测量阻抗
+     * Impedance measurement starting
      */
     ICMeasureStepAdcStart,
 
     /*
-     * 测量阻抗结束 (ICWeightData)
+     * Impedance measurement finished (ICWeightData)
      */
     ICMeasureStepAdcResult,
     
     /*
-     * 开始测量心率
+     * Heart-rate measurement starting
      */
     ICMeasureStepHrStart,
     
     /*
-     * 测量心率结束 (ICWeightData)
+     * Heart-rate measurement finished (ICWeightData)
      */
     ICMeasureStepHrResult,
     
     /*
-     * 测量结束
+     * Measurement finished
      */
     ICMeasureStepMeasureOver,
 
@@ -903,62 +903,62 @@ typedef enum : NSUInteger {
 
 
 /**
- * 跳绳模式
+ * Rope-skipping mode
  */
 typedef enum : NSUInteger {
     /**
-     * 自由跳
+     * Free mode
      */
     ICSkipModeFreedom = 0,
     
     /**
-     * 计时跳
+     * Timed mode
      */
     ICSkipModeTiming,
     
     /**
-     * 计次跳
+     * Counted mode
      */
     ICSkipModeCount,
 
     /**
-     * 计时间歇跳
+     * Timed interval mode
      */
     ICSkipModeInterruptTime,
     
     /**
-     * 计次间歇跳
+     * Counted interval mode
      */
     ICSkipModeInterruptCount,
 
 } ICSkipMode;
 
 /**
- * 升级状态
+ * Upgrade status
  */
 typedef NS_ENUM(NSUInteger, ICUpgradeStatus) {
     /**
-     * 升级成功
+     * Upgrade succeeded
      */
     ICUpgradeStatusSuccess,
     /**
-     * 升级中
+     * Upgrading
      */
     ICUpgradeStatusUpgrading,
     /**
-     * 升级失败
+     * Upgrade failed
      */
     ICUpgradeStatusFail,
     /**
-     * 升级失败，文件无效
+     * Upgrade failed: invalid file
      */
     ICUpgradeStatusFailFileInvalid,
     /**
-     * 升级失败，设备不支持升级
+     * Upgrade failed: device does not support upgrade
      */
     ICUpgradeStatusFailNotSupport,
     /**
-     * 文件下载中(WiFi升级下载文件)
+     * Firmware file downloading (Wi-Fi OTA)
      */
     ICUpgradeStatusFileDownloading,
 
@@ -966,33 +966,33 @@ typedef NS_ENUM(NSUInteger, ICUpgradeStatus) {
 
 
 /**
- * Wifi配网模式
+ * Wi-Fi provisioning mode
  */
 typedef NS_ENUM(NSUInteger, ICConfigWifiMode) {
     /*
-     * 发送ssid和密码
+     * Send SSID and password
      */
     ICConfigWifiModeDefault,
     /*
-     * 告诉秤进入配网模式，延长亮屏时间
+     * Ask the scale to enter provisioning mode (extends the screen-on time)
      */
     ICConfigWifiModeEnter,
     /*
-     * 告诉秤app退出配网模式
+     * Ask the scale to leave provisioning mode
      */
     ICConfigWifiModeExit,
     /*
-     * 开始扫描Wifi
+     * Start scanning for Wi-Fi
      */
     ICConfigWifiModeStartScan,
     /*
-     * 停止扫描Wifi
+     * Stop scanning for Wi-Fi
      */
     ICConfigWifiModeStopScan,
 };
 
 /**
- * Wifi配网状态
+ * Wi-Fi provisioning state
  */
 typedef NS_ENUM(NSUInteger, ICConfigWifiState) {
     ICConfigWifiStateSuccess,
@@ -1005,7 +1005,7 @@ typedef NS_ENUM(NSUInteger, ICConfigWifiState) {
 };
 
 /**
- * Wifi回调结果数据类型
+ * Wi-Fi callback-result data type
  */
 typedef NS_ENUM(NSUInteger,ICConfigWifiResultType){
     ICConfigWifiResultTypeState,
@@ -1014,131 +1014,131 @@ typedef NS_ENUM(NSUInteger,ICConfigWifiResultType){
 };
 
 /*
- * 跳绳灯效模式
+ * Rope-skipping light-effect mode
  */
 typedef NS_ENUM(NSUInteger, ICSkipLightMode) {
     /*
-     * 无
+     * None
      */
     ICSkipLightModeNone,
     /*
-     * 速度模式
+     * Speed mode
      */
     ICSkipLightModeRPM,
     /*
-     * 计时模式
+     * Timer mode
      */
     ICSkipLightModeTimer,
     /*
-     * 计次模式
+     * Count mode
      */
     ICSkipLightModeCount,
     /*
-     * 百分比模式
+     * Percent mode
      */
     ICSkipLightModePercent,
     /*
-     * 绊绳次数模式
+     * Trip-rope count mode
      */
     ICSkipLightModeTripRope,
     /*
-     * 测量模式模式
+     * Measurement mode
      */
     ICSkipLightModeMeasuring,
 };
 
 /*
- * 语音类型
+ * Voice type
  */
 typedef NS_ENUM(NSUInteger, ICSkipSoundType) {
     /*
-     * 无
+     * None
      */
     ICSkipSoundTypeNone,
     /*
-     * 标准中文女声
+     * Standard Chinese female voice
      */
     ICSkipSoundTypeFemale,
     /*
-     * 标准中文男声
+     * Standard Chinese male voice
      */
     ICSkipSoundTypeMale,
 };
 
 /*
- * 语音模式
+ * Voice mode
  */
 typedef NS_ENUM(NSUInteger, ICSkipSoundMode) {
     /*
-     * 无
+     * None
      */
     ICSkipSoundModeNone,
     /*
-     * 按间隔时长
+     * By time interval
      */
     ICSkipSoundModeTime,
     /*
-     * 按间隔个数
+     * By count interval
      */
     ICSkipSoundModeCount,
 };
 
 /*
- * 升级模式
+ * OTA upgrade mode
  */
 typedef NS_ENUM(NSUInteger, ICOTAMode) {
     /*
-     * 自动模式
+     * Automatic mode
      */
     ICOTAModeAuto,
     /*
-     * 模式1
+     * Mode 1
      */
     ICOTAMode1,
     /*
-     * 模式2
+     * Mode 2
      */
     ICOTAMode2,
     /*
-     * 模式3
+     * Mode 3
      */
     ICOTAMode3,
     /*
-     * 模式4，WiFi OTA。filePath设置为固件版本号
+     * Mode 4 (Wi-Fi OTA). Pass the firmware version as the file-path argument
      */
     ICOTAMode4,
 };
 
 /*
- * 跳绳状态
+ * Rope-skipping status
  */
 
 typedef NS_ENUM(NSUInteger, ICSkipStatus) {
     /*
-     * 跳绳中
+     * Jumping in progress
      */
     ICSkipStatusJumping,
     /*
-     * 跳绳结束
+     * Jumping finished
      */
     ICSkipStatusJumpOver,
     /*
-     * 跳绳休息中
+     * Resting between rounds
      */
     ICSkipStatusRest,
 };
 
 /*
- * SDK模式
+ * SDK mode
  */
 
 typedef NS_ENUM(NSUInteger, ICSDKMode) {
     /*
-     * 默认模式
+     * Default mode
      */
     ICSDKModeDefault,
     /*
-     * 竞技模式
+     * Competitive mode
      */
     ICSDKModeCompetitive,
 };
@@ -1146,7 +1146,7 @@ typedef NS_ENUM(NSUInteger, ICSDKMode) {
 
 
 /*
- * bpm类型
+ * BPM type
  */
 
 typedef NS_ENUM(NSUInteger, ICBPMType) {
@@ -1160,7 +1160,7 @@ typedef NS_ENUM(NSUInteger, ICBPMType) {
 
 
 /*
- * bmi标准
+ * BMI standard
  */
 
 typedef NS_ENUM(NSUInteger, ICBMIStandard) {
@@ -1179,7 +1179,7 @@ typedef NS_ENUM(NSUInteger, ICBMIStandard) {
 
 typedef NS_ENUM(NSInteger , ICScaleUIItem) {
     /*
-    * 体重
+    * Weight
     */
     ICScaleUIItemWeight,
     /*
@@ -1187,75 +1187,75 @@ typedef NS_ENUM(NSInteger , ICScaleUIItem) {
     */
     ICScaleUIItemBMI,
     /*
-    * 体脂率
+    * Body-fat percentage
     */
     ICScaleUIItemBodyFatPercent,
     /*
-    * 含水率
+    * Body-water percentage
     */
     ICScaleUIItemMoisturePercent,
     /*
-    * 肌肉率
+    * Muscle percentage
     */
     ICScaleUIItemMusclePercent,
     /*
-    * 骨量
+    * Bone mass
     */
     ICScaleUIItemBoneMass,
     /*
-    * 心率
+    * Heart rate
     */
     ICScaleUIItemHR,
     /*
-    * 骨骼肌率
+    * Skeletal-muscle percentage
     */
     ICScaleUIItemSmPercent,
     /*
-    * 内脏脂肪
+    * Visceral fat
     */
     ICScaleUIItemVisceralFat,
     /*
-    * 皮下脂肪率
+    * Subcutaneous-fat percentage
     */
     ICScaleUIItemSubcutaneousFatPercent,
     /*
-    * 蛋白率
+    * Protein percentage
     */
     ICScaleUIItemProteinPercent,
     /*
-    * 体型
+    * Body type
     */
     ICScaleUIItemBodyType,
     /*
-    * 节段肌肉分析
+    * Segmental muscle analysis
     */
     ICScaleUIItemStageMuscle,
     /*
-    * 节段脂肪分析
+    * Segmental fat analysis
     */
     ICScaleUIItemStageFat,
     /*
-    * 体重趋势
+    * Weight trend
     */
     ICScaleUIItemWeightTrends,
     /*
-    * bmi趋势
+    * BMI trend
     */
     ICScaleUIItemBMITrends,
     /*
-    * 体脂趋势
+    * Body-fat trend
     */
     ICScaleUIItemBodyFatTrends,
     /*
-    * 肌肉趋势
+    * Muscle trend
     */
     ICScaleUIItemMuscleTrends,
     /*
-     * 抱婴界面
+     * Baby-holding screen
      */
     ICScaleUIItemBaby,
     /*
-     * 孕妇界面
+     * Pregnancy screen
      */
     ICScaleUIItemPregnant,
 
@@ -1263,188 +1263,188 @@ typedef NS_ENUM(NSInteger , ICScaleUIItem) {
 };
 
 /*
- * 设备功能支持
+ * Device-feature support flags
  */
 
 typedef NS_ENUM(NSUInteger, ICDeviceFunction) {
     /*
-     * WIFI个能
+     * Wi-Fi capability
      */
     ICDeviceFunctionWiFi,
     /*
-     * 语音助手
+     * Voice assistant
      */
     ICDeviceFunctionVoiceAssistant,
     /*
-     * 音效
+     * Sound effects
      */
     ICDeviceFunctionSoundEffect,
     /*
-     * 音量
+     * Volume
      */
     ICDeviceFunctionVolume,
     /*
-     * 语音语言
+     * Voice language
      */
     ICDeviceFunctionVoiceLanguage,
     /*
-     * 设备上报体脂率(内部使用，外部不要使用)
+     * Device uploads body-fat percentage (internal use only)
      */
     ICDeviceFunctionSupportUploadBodyfat,
     /*
-     * 天气
+     * Weather
      */
     ICDeviceFunctionSupportWeather,
     /*
-     * 重启
+     * Restart
      */
     ICDeviceFunctionSupportRestart,
     /*
-     * 恢复出厂设置
+     * Factory reset
      */
     ICDeviceFunctionSupportFactory,
 
     /*
-     * 配置服务器地址
+     * Configure server URL
      */
     ICDeviceFunctionSupportServerUrl,
     /*
-     * 支持昵称
+     * Support nickname
      */
     ICDeviceFunctionSupportNickName,
     /*
-     * 支持昵称图片
+     * Support nickname image
      */
     ICDeviceFunctionSupportNickNameImg,
     /*
-     * 支持设置秤的ui显示项
+     * Support configuring scale UI items
      */
     ICDeviceFunctionSupportSetUIItem,
     /*
-     * 支持设置秤的灯光
+     * Support configuring scale lighting
      */
     ICDeviceFunctionSupportScaleLightSetting,
     /*
-     * 支持婴儿模式
+     * Baby-mode support
      */
     ICDeviceFunctionSupportBabyMode,
     /*
-     * 支持身高单位下发
+     * Support pushing the height unit
      */
     ICDeviceFunctionSupportHeightUnit,
     /*
-     * 支持阻抗开关
+     * Support impedance toggle
      */
     ICDeviceFunctionSupportImpedance,
     /*
-     * WIFI功能(是否支持扫描wifi)
+     * Wi-Fi scanning capability
      */
     ICDeviceFunctionSupportScanWiFi,
     /*
-     * 支持小物模式
+     * Small-object mode support
      */
     ICDeviceFunctionSupportSmartMode,
     /*
-     * 支持电量
+     * Battery-level support
      */
     ICDeviceFunctionSupportBattery,
 
     /*
-     * 是否支持新的用户管理，AC2C下，都是1
+     * Whether the new user-manager is supported (always 1 on AC2C)
      */
     ICDeviceFunctionSupportNewUserManager,
     /*
-     * 是否支持显示UserIndex
+     * Support showing UserIndex
      */
     ICDeviceFunctionSupportShowUserIndex,
     /*
-     * 是否支持下发Https证书
+     * Support pushing HTTPS certificate
      */
     ICDeviceFunctionSupportHttpsCertificate,
     /*
-     * 是否支持待机唤醒
+     * Standby wake-up support
      */
     ICDeviceFunctionSupportWakeUp,
     /*
-     * 是否支持预设头像
+     * Preset-avatar support
      */
     ICDeviceFunctionSupportAvatar,
  
     /*
-     * 八电极
+     * 8-electrode
      */
     ICDeviceFunctionEightElectrode = 32,
     /*
-     * 预留
+     * Reserved
      */
     ICDeviceFunctionRev = 33,
 };
 
 /**
-    发送的文件类型
+    Uploaded file type
  */
 typedef NS_ENUM(NSUInteger, ICSendDataType) {
     /*
-     * 头像，传入NSData
+     * Avatar (NSData payload)
      */
     ICSendDataTypeHeadImg,
     /*
-     * 头像，传入ICUserInfo
+     * Nickname (ICUserInfo payload)
      */
     ICSendDataTypeNickName,
     /*
-     * 开机动画，传入NSData
+     * Boot animation (NSData payload)
      */
     ICSendDataTypePowerOnImg,
     /*
-     * 关机动画，传入NSData
+     * Shutdown animation (NSData payload)
      */
     ICSendDataTypePowerOffImg,
     /*
-     * 食物图标，传入NSData
+     * Food icon (NSData payload)
      */
     ICSendDataTypeFoodIcon,
 };
 
 
 /**
- * 均衡评估
+ * Body-balance evaluation
  */
 typedef NS_ENUM(NSUInteger, ICBodyBalanceEvaluation) {
     /*
-     * 不支持
+     * Not supported
      */
     ICBodyBalanceEvaluationNotSuppport,
     /*
-     * 均衡
+     * Balanced
      */
     ICBodyBalanceEvaluationBalanced,
     /*
-     * 轻度失衡
+     * Slightly unbalanced
      */
     ICBodyBalanceEvaluationSlightlyUnbalanced,
     /*
-     * 不均衡
+     * Not balanced
      */
     ICBodyBalanceEvaluationExtremelyUnbalanced,
 };
 
 /**
- * 体脂秤测量模式
+ * Body-fat-scale measurement mode
  */
 typedef NS_ENUM(NSUInteger, ICScaleMeasureMode) {
     /**
-     * 普通模式
+     * Normal mode
      */
     ICScaleMeasureModeNormal,
 
     /**
-     * 孕妇模式
+     * Pregnancy mode
      */
     ICScaleMeasureModePregnant,
 
     /**
-     * 抱婴模式
+     * Baby-holding mode
      */
     ICScaleMeasureModeBaby,
 };

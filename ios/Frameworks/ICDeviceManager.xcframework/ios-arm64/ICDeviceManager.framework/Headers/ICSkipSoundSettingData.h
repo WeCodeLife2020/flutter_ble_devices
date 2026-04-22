@@ -13,30 +13,30 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ICSkipSoundSettingData : NSObject
 
-/// 是否开启语音开关
+/// Voice switch.
 @property (nonatomic, assign) BOOL soundOn;
-/// 语音类型
+/// Voice type.
 @property (nonatomic, assign) ICSkipSoundType soundType;
-/// 声音大小
+/// Volume level.
 @property (nonatomic, assign) NSUInteger soundVolume;
-/// 满分开关
+/// Full-score switch.
 @property (nonatomic, assign) BOOL fullScoreOn;
-/// 满分速率
+/// Full-score BPM target.
 @property (nonatomic, assign) NSUInteger fullScoreBPM;
-/// 语音间隔模式
+/// Voice-interval mode.
 @property (nonatomic, assign) ICSkipSoundMode soundMode;
-/// 模式参数
+/// Mode parameter.
 @property (nonatomic, assign) NSUInteger modeParam;
-/// 是否自动停止播放，YES:APP下发开始后，跳绳不会播放语音 ，NO:跳绳和APP都会播放语音
+/// Whether the skipping rope auto-stops its audio. YES: once the app sends Start the device stays silent. NO: both device and app play audio.
 @property (nonatomic, assign) BOOL isAutoStop;
 
-/// 语音助手开关，仅S2支持
+/// Voice-assistant switch. Only supported on S2.
 @property (nonatomic, assign) BOOL assistantOn;
-/// 节拍器开关，仅S2支持
+/// Metronome switch. Only supported on S2.
 @property (nonatomic, assign) BOOL bpmOn;
-/// 震动开关，仅S2支持
+/// Vibration switch. Only supported on S2.
 @property (nonatomic, assign) BOOL vibrationOn;
-/// 心率上限报警开关，仅S2支持
+/// Heart-rate high-alarm switch. Only supported on S2.
 @property (nonatomic, assign) BOOL hrMonitorOn;
 
 

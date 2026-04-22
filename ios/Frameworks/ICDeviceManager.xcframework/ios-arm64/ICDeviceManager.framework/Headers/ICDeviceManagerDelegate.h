@@ -3,7 +3,7 @@
 //  ICDeviceManager
 //
 //  Created by Symons on 2018/7/28.
-//  Copyright © 2018年 Symons. All rights reserved.
+//  Copyright (c) 2018 Symons. All rights reserved.
 //
 
 #import <Foundation/Foundation.h>
@@ -13,306 +13,307 @@
 
 @required
 /**
- SDKc初始化完成回调
- 
- @param bSuccess 初始化是否成功
+ SDK initialisation-complete callback.
+
+ @param bSuccess Whether initialisation succeeded.
  */
 - (void)onInitFinish:(BOOL)bSuccess;
 
 @optional
 
 /**
- 蓝牙改变状态回调
- 
- @param state 蓝牙状态
+ Bluetooth state-change callback.
+
+ @param state Bluetooth state.
  */
 - (void)onBleState:(ICBleState)state;
 
 /**
- 设备连接状态回调
- 
- @param device 设备
- @param state 连接状态
+ Device connection-state callback.
+
+ @param device Device.
+ @param state  Connection state.
  */
 - (void)onDeviceConnectionChanged:(ICDevice *)device state:(ICDeviceConnectState)state;
 
 /**
- 节点设备连接状态回调
- 
- @param device 设备
- @param nodeId 设备
- @param state 连接状态
+ Node-device connection-state callback.
+
+ @param device Device.
+ @param nodeId Node identifier.
+ @param state  Connection state.
  */
 - (void)onNodeConnectionChanged:(ICDevice *)device nodeId:(NSUInteger)nodeId state:(ICDeviceConnectState)state;
 
 
 /**
- 体重秤数据回调
- 
- @param device 设备
- @param data 测量数据
+ Body-weight scale data callback.
+
+ @param device Device.
+ @param data   Measurement data.
  */
 - (void)onReceiveWeightData:(ICDevice *)device data:(ICWeightData *)data;
 
 
 /**
- 厨房秤数据回调
- 
- @param device 设备
- @param data 测量数据
+ Kitchen-scale data callback.
+
+ @param device Device.
+ @param data   Measurement data.
  */
 - (void)onReceiveKitchenScaleData:(ICDevice *)device data:(ICKitchenScaleData *)data;
 
 
 /**
- 厨房秤历史数据回调
- 
- @param device 设备
- @param datas 历史数据列表
+ Kitchen-scale history-data callback.
+
+ @param device Device.
+ @param datas  List of historical readings.
  */
 - (void)onReceiveKitchenScaleHistoryData:(ICDevice *)device datas:(NSArray<ICKitchenScaleData *> *)datas;
 
 
 /**
- 厨房秤单位改变
+ Kitchen-scale unit-changed callback.
 
- @param device 设备
- @param unit 改变后的单位
+ @param device Device.
+ @param unit   New unit.
  */
 - (void)onReceiveKitchenScaleUnitChanged:(ICDevice *)device unit:(ICKitchenScaleUnit)unit;
 
 /**
- 厨房秤食物列表
+ Kitchen-scale food list callback.
 
- @param device 设备
- @param foods 食物列表
+ @param device Device.
+ @param foods  Food list.
  */
 - (void)onReceiveKitchenScaleCommonFoods:(ICDevice *)device foods:(NSArray<ICFoodInfo *> *)foods;
 
 
 /**
- 平衡秤坐标数据回调
- 
- @param device 设备
- @param data 测量坐标数据
+ Balance-scale coordinate callback.
+
+ @param device Device.
+ @param data   Coordinate data.
  */
 - (void)onReceiveCoordData:(ICDevice *)device data:(ICCoordData *)data;
 
 /**
- 围尺数据回调
- 
- @param device 设备
- @param data 测量数据
+ Tape-measure data callback.
+
+ @param device Device.
+ @param data   Measurement data.
  */
 - (void)onReceiveRulerData:(ICDevice *)device data:(ICRulerData *)data;
 
 /**
- 围尺历史数据回调
- 
- @param device 设备
- @param data 测量数据
+ Tape-measure history-data callback.
+
+ @param device Device.
+ @param data   Measurement data.
  */
 - (void)onReceiveRulerHistoryData:(ICDevice *)device data:(ICRulerData *)data;
 
 /**
- 平衡数据回调
- 
- @param device 设备
- @param data 平衡数据
+ Balance / centre-of-gravity data callback.
+
+ @param device Device.
+ @param data   Balance data.
  */
 - (void)onReceiveWeightCenterData:(ICDevice *)device data:(ICWeightCenterData *)data;
 
 /**
- 设备单位改变回调
+ Device unit-changed callback.
 
- @param device  设备
- @param unit    设备当前单位
+ @param device Device.
+ @param unit   Current device unit.
  */
 - (void)onReceiveWeightUnitChanged:(ICDevice *)device unit:(ICWeightUnit)unit;
 
 
 /**
- 围尺单位改变回调
- 
- @param device 设备
- @param unit 设备当前单位
+ Tape-measure unit-changed callback.
+
+ @param device Device.
+ @param unit   Current device unit.
  */
 - (void)onReceiveRulerUnitChanged:(ICDevice *)device unit:(ICRulerUnit)unit;
 
 /**
- 围尺测量模式改变回调
- 
- @param device 设备
- @param mode 设备当前测量模式
+ Tape-measure mode-changed callback.
+
+ @param device Device.
+ @param mode   Current measurement mode.
  */
 - (void)onReceiveRulerMeasureModeChanged:(ICDevice *)device mode:(ICRulerMeasureMode)mode;
 
 
 /**
- 4个传感器数据回调
- 
- @param device 设备
- @param data 传感器数据
+ Per-electrode (4-sensor) data callback.
+
+ @param device Device.
+ @param data   Electrode data.
  */
 - (void)onReceiveElectrodeData:(ICDevice *)device data:(ICElectrodeData *)data;
 
 /**
- 分步骤体重、平衡、阻抗、心率数据回调
- 
- @param device  设备
- @param step    当前处于的步骤
- @param data    数据
+ Step-wise callback delivering weight, balance, impedance and heart-rate data.
+
+ @param device Device.
+ @param step   Current measurement step.
+ @param data   Step payload (see ICMeasureStep for the concrete class).
  */
 - (void)onReceiveMeasureStepData:(ICDevice *)device step:(ICMeasureStep)step data:(NSObject *)data;
 
 /**
- 体重历史数据回调
- 
- @param device 设备
- @param data 体重历史数据
+ Weight-history-data callback.
+
+ @param device Device.
+ @param data   Historical weight data.
  */
 - (void)onReceiveWeightHistoryData:(ICDevice *)device data:(ICWeightHistoryData *)data;
 
 
 /**
- 跳绳实时数据回调
- 
- @param device 设备
- @param data 体重历史数据
+ Real-time rope-skipping data callback.
+
+ @param device Device.
+ @param data   Rope-skipping data.
  */
 - (void)onReceiveSkipData:(ICDevice *)device data:(ICSkipData *)data;
 
 
 /**
- 跳绳历史数据回调
- 
- @param device 设备
- @param data 跳绳历史数据
+ Rope-skipping history-data callback.
+
+ @param device Device.
+ @param data   Historical rope-skipping data.
  */
 - (void)onReceiveHistorySkipData:(ICDevice *)device data:(ICSkipData *)data;
 
 /**
- 跳绳电量,后续使用onReceiveBattery
- 
- @param device 设备
- @param battery 电量，范围:0~100
+ Rope-skipping battery level. Superseded by onReceiveBattery.
+
+ @param device  Device.
+ @param battery Battery percentage in the range 0-100.
  */
 //- (void)onReceiveSkipBattery:(ICDevice *)device battery:(NSUInteger)battery;
 
 /**
- 电量
- 
- @param device 设备
- @param battery 电量，范围:0~100
- @param ext 扩展字段，如是基站跳绳，则该字段的值表示节点ID，类型：NSNumber
+ Battery-level callback.
+
+ @param device  Device.
+ @param battery Battery percentage in the range 0-100.
+ @param ext     Extension payload. For station-based skipping ropes this is the node ID boxed as NSNumber.
  */
 - (void)onReceiveBattery:(ICDevice *)device battery:(NSUInteger)battery ext:(NSObject *)ext;
 
 /**
- 设备升级状态回调
- @param device 设备
- @param status 升级状态
- @param percent 升级进度,范围:0~100
+ Device OTA upgrade-status callback.
+
+ @param device  Device.
+ @param status  Upgrade status.
+ @param percent Upgrade progress in the range 0-100.
  */
 - (void)onReceiveUpgradePercent:(ICDevice *)device status:(ICUpgradeStatus)status percent:(NSUInteger)percent;
 
 /**
- 设备信息回调
+ Device-info callback.
 
- @param device 设备
- @param deviceInfo 设备信息
+ @param device     Device.
+ @param deviceInfo Device info.
  */
 - (void)onReceiveDeviceInfo:(ICDevice *)device deviceInfo:(ICDeviceInfo *)deviceInfo;
 
 /**
- * 配网结果回调
- * @param device 设备
- * @param type 配网数据类型
- * @param obj 数据
+ * Wi-Fi provisioning result callback.
+ * @param device Device.
+ * @param type   Provisioning data type.
+ * @param obj    Payload.
  */
 - (void)onReceiveConfigWifiResult:(ICDevice *)device type:(ICConfigWifiResultType)type obj:(NSObject *)obj;
 
 
 /**
- 心率
+ Heart-rate callback.
 
- @param device 设备
- @param hr 心率，范围:0~255
+ @param device Device.
+ @param hr     Heart rate in the range 0-255.
  */
 - (void)onReceiveHR:(ICDevice *)device hr:(int)hr;
 
 
 /**
- 收到设备上报的用户信息，竞技款跳绳
+ User-info upload callback (sports-edition skipping ropes).
 
- @param device 设备
- @param userInfo 用户信息
+ @param device   Device.
+ @param userInfo User info.
  */
 - (void)onReceiveUserInfo:(ICDevice *)device userInfo:(ICUserInfo *)userInfo;
 
 /**
- 收到设备上报的用户信息列表，用户信息并不完整，只包含一部分
+ User-info list upload callback. The entries contain only a subset of user fields.
 
- @param device 设备
- @param userInfos 用户信息
+ @param device    Device.
+ @param userInfos User-info list.
  */
 - (void)onReceiveUserInfoList:(ICDevice *)device userInfos:(NSArray<ICUserInfo *> *)userInfos;
 
 /**
- 设备信号强度回调
+ Device RSSI callback.
 
- @param device 设备
- @param rssi 信号强度
+ @param device Device.
+ @param rssi   Signal strength.
  */
 - (void)onReceiveRSSI:(ICDevice *)device rssi:(int)rssi;
 
 
 /**
-   调试数据回调
+   Debug-data callback.
 
-   @param device 设备
-   @param type 类型
-   @param obj 数据
+   @param device Device.
+   @param type   Data type.
+   @param obj    Payload.
    */
 - (void)onReceiveDebugData:(ICDevice *)device type:(int)type obj:(NSObject *)obj;
 
 /**
-   收到设备上报的设备灯光配置信息
- 
-   @param device 设备
-   @param obj 灯光参数
+   Device-light configuration callback.
+
+   @param device Device.
+   @param obj    Light parameters.
  */
 - (void)onReceiveDeviceLightSetting:(ICDevice *)device obj:(NSObject *)obj;
 
 
 /**
- * 收到W扫描的WiFi列表
- * @param device 设备
- * @param ssid   WiFi SSID
- * @param method 加密方式
- * @param rssi   信号
+ * Wi-Fi scan-result callback (W-series devices).
+ * @param device Device.
+ * @param ssid   Wi-Fi SSID.
+ * @param method Encryption method.
+ * @param rssi   Signal strength.
  */
 - (void)onReceiveScanWifiInfo_W:(ICDevice *)device ssid:(NSString *)ssid method:(NSInteger)method rssi:(NSUInteger)rssi;
 
 /**
- * 收到W当前连接WiFi信息
- * @param device 设备
- * @param status 状态，0:未配网，1:未连接wifi，2:已连接wifi未连接服务器，3:已连接服务器,4:wifi模块未上电
- * @param ip     IP
- * @param ssid   SSID
- * @param rssi   信号
+ * Current-Wi-Fi callback (W-series devices).
+ * @param device Device.
+ * @param status Status. 0: not provisioned, 1: Wi-Fi not connected, 2: Wi-Fi connected but server not reachable, 3: server connected, 4: Wi-Fi module not powered.
+ * @param ip     IP address.
+ * @param ssid   SSID.
+ * @param rssi   Signal strength.
  */
 - (void)onReceiveCurrentWifiInfo_W:(ICDevice *)device status:(NSUInteger)status ip:(NSString *)ip ssid:(NSString *)ssid  rssi:(NSInteger)rssi;
 /**
- * 绑定状态
- * @param device 设备
- * @param status 绑定状态，1已绑定，0未绑定
+ * Binding-state callback.
+ * @param device Device.
+ * @param status Binding state. 1: bound, 0: not bound.
  */
 - (void)onReceiveBindState_W:(ICDevice *)device status:(NSUInteger)status;
 /**
-  * 当前界面ID切换
-  * @param device 设备
-  * @param pageId 界面ID
+  * Current UI page-ID change callback.
+  * @param device Device.
+  * @param pageId UI page identifier.
   */
 - (void)onReceiveCurrentPage:(ICDevice *)device pageId:(NSUInteger)pageId;
 

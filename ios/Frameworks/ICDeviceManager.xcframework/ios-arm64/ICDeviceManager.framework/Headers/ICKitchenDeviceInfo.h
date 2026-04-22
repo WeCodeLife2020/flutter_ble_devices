@@ -14,50 +14,50 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ICKitchenDeviceInfo : ICDeviceInfo
 
 /**
- 秤支持的功能
+ Functions supported by the scale.
  */
 @property(nonatomic, strong) NSArray<NSNumber *> *supportFuns;
 
 /**
- 支持秤上显示的营养数据类型
+ Nutrition-data types the scale can display.
  */
 @property(nonatomic, strong) NSArray<NSNumber *> *supportDataTypes;
 
 /**
- 当前秤上的历史数据数量
+ Number of history entries currently stored on the scale.
  */
 @property(nonatomic, assign) NSUInteger historyCount;
 
 /**
- 图片大小端
+ Image endianness.
  */
 @property(nonatomic, assign) NSInteger imageEndian;
 
 /**
- 图片方向
+ Image orientation.
  */
 @property(nonatomic, assign) NSInteger imageDirection;
 
 /**
- 图片色彩深度
+ Image colour depth.
  */
 @property(nonatomic, assign) NSInteger imageColorDepth;
 
 
 /**
- 当前语音识别开关：0关，1开
+ Current voice-recognition switch. 0: off, 1: on.
  */
 @property(nonatomic, assign) BOOL isSoundSwitch;
 /**
- 食物图片分辨率-宽
+ Food-image resolution: width.
  */
 @property(nonatomic, assign) NSInteger foodImageWidth;
 /**
- 食物图片分辨率-高
+ Food-image resolution: height.
  */
 @property(nonatomic, assign) NSInteger foodImageHeight;
 /**
- 食物名称分辨率-高
+ Food-name resolution: height.
  */
 @property(nonatomic, assign) NSInteger foodNameHeight;
 

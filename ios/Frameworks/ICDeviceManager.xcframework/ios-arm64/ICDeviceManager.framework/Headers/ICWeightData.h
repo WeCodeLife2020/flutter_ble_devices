@@ -3,262 +3,262 @@
 //  ICDeviceManager
 //
 //  Created by Symons on 2018/8/7.
-//  Copyright © 2018年 Symons. All rights reserved.
+//  Copyright (c) 2018 Symons. All rights reserved.
 //
 
 #import <Foundation/Foundation.h>
 #import "ICConstant.h"
 
 /**
- 体重扩展数据,主要是8电极的部分数据
+ Extended weight data. Primarily used for the additional 8-electrode fields.
  */
 @interface ICWeightExtData : NSObject
 
 /**
- 左手体脂率(单位:%, 精度:0.1)
+ Left-arm body-fat percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float left_arm;
 
 /**
- 右手体脂率(单位:%, 精度:0.1)
+ Right-arm body-fat percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float right_arm;
 
 /**
- 左脚体脂率(单位:%, 精度:0.1)
+ Left-leg body-fat percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float left_leg;
 
 /**
- 右脚体脂率(单位:%, 精度:0.1)
+ Right-leg body-fat percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float right_leg;
 
 /**
- 躯干体脂率(单位:%, 精度:0.1)
+ Trunk body-fat percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float all_body;
 
 
 /**
- 左手脂肪量(单位:kg, 精度:0.1)
+ Left-arm fat mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float left_arm_kg;
 
 /**
- 右手脂肪量(单位:kg, 精度:0.1)
+ Right-arm fat mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float right_arm_kg;
 
 /**
- 左脚脂肪量(单位:kg, 精度:0.1)
+ Left-leg fat mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float left_leg_kg;
 
 /**
- 右脚脂肪量(单位:kg, 精度:0.1)
+ Right-leg fat mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float right_leg_kg;
 
 /**
- 躯干脂肪量(单位:kg, 精度:0.1)
+ Trunk fat mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float all_body_kg;
 
 /**
- 左手肌肉率(单位:%, 精度:0.1)
+ Left-arm muscle percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float left_arm_muscle;
 
 /**
- 右手肌肉率(单位:%, 精度:0.1)
+ Right-arm muscle percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float right_arm_muscle;
 
 /**
- 左脚肌肉率(单位:%, 精度:0.1)
+ Left-leg muscle percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float left_leg_muscle;
 
 /**
- 右脚肌肉率(单位:%, 精度:0.1)
+ Right-leg muscle percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float right_leg_muscle;
 
 /**
- 躯干肌肉率(单位:%, 精度:0.1)
+ Trunk muscle percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float all_body_muscle;
 
 
 /**
- 左手肌肉量(单位:kg, 精度:0.1)
+ Left-arm muscle mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float left_arm_muscle_kg;
 
 /**
- 右手肌肉量(单位:kg, 精度:0.1)
+ Right-arm muscle mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float right_arm_muscle_kg;
 
 /**
- 左脚肌肉量(单位:kg, 精度:0.1)
+ Left-leg muscle mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float left_leg_muscle_kg;
 
 /**
- 右脚肌肉量(单位:kg, 精度:0.1)
+ Right-leg muscle mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float right_leg_muscle_kg;
 
 /**
- 躯干肌肉量(单位:kg, 精度:0.1)
+ Trunk muscle mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float all_body_muscle_kg;
 
 @end
 
 /**
- 体重数据
+ Weight data.
  */
 @interface ICWeightData : NSObject
 /**
- 用户ID,默认:0
+ User ID. Default: 0.
  */
 @property (nonatomic, assign) NSUInteger userId;
 /**
- 数据是否稳定
- @notice 如果数据不稳定，则只有weight_kg和weight_lb有效，不稳定的数据只做展示用，请勿保存
+ Whether the sample is stable.
+ @notice When unstable, only `weight_kg` and `weight_lb` are valid. Unstable samples are for display only and should not be persisted.
  */
 @property (nonatomic, assign) BOOL isStabilized;
 
 /**
- 体重(g)
+ Weight in grams.
  */
 @property (nonatomic, assign) NSUInteger weight_g;
 
 /**
- 体重(kg)
+ Weight in kilograms.
  */
 @property (nonatomic, assign) float weight_kg;
 
 /**
- 体重(lb)
+ Weight in pounds.
  */
 @property (nonatomic, assign) float weight_lb;
 
 /**
- 体重(st:lb)，注:这个字段跟weight_st_lb一起使用
+ Weight (stones component of st:lb). Use together with weight_st_lb.
  */
 @property (nonatomic, assign) NSUInteger weight_st;
 
 /**
- 体重(st:lb)，注:这个字段跟weight_st一起使用
+ Weight (pounds remainder of st:lb). Use together with weight_st.
  */
 @property (nonatomic, assign) float weight_st_lb;
 
 /**
- kg体重小数点位数,如:weight_kg=70.12,则precision=2，weight_kg=71.5,则precision_kg=1
+ Decimal precision for kg. e.g. weight_kg=70.12 → precision=2; weight_kg=71.5 → precision_kg=1.
  */
 @property (nonatomic, assign) NSUInteger precision_kg;
 
 /**
- lb体重小数点位数,如:weight_lb=70.12,则precision=2，weight_lb=71.5,则precision_lb=1
+ Decimal precision for lb. e.g. weight_lb=70.12 → precision=2; weight_lb=71.5 → precision_lb=1.
  */
 @property (nonatomic, assign) NSUInteger precision_lb;
 
 /**
- st:lb体重小数点位数
+ Decimal precision for st:lb weight.
  */
 @property (nonatomic, assign) NSUInteger precision_st_lb;
 
 /**
- kg分度值
+ Scale division for kg.
  */
 @property (nonatomic, assign) NSUInteger kg_scale_division;
 
 /**
- lb分度值
+ Scale division for lb.
  */
 @property (nonatomic, assign) NSUInteger lb_scale_division;
 
 /**
- 温度,单位:摄氏度
+ Temperature in degrees Celsius.
  */
 @property (nonatomic, assign) float temperature;
 
 /**
- 测量时间戳(秒)
+ Measurement timestamp (seconds).
  */
 @property (nonatomic, assign) NSUInteger time;
 
 /**
- 支持心率测量
+ Whether the device supports heart-rate measurement.
  */
 @property (nonatomic, assign) BOOL isSupportHR;
 
 /**
- 心率值
+ Heart-rate value.
  */
 @property (nonatomic, assign) NSUInteger hr;
 
 /**
- 身体质量指数BMI(精度:0.1)
+ Body Mass Index. Precision: 0.1.
  */
 @property (nonatomic, assign) float bmi;
 
 /**
- 体脂率(百分比, 精度:0.1)
+ Body-fat percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float bodyFatPercent;
 
 /**
- 皮下脂肪率(百分比, 精度:0.1)
+ Subcutaneous-fat percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float subcutaneousFatPercent;
 
 /**
- 内脏脂肪指数(精度:0.1)
+ Visceral-fat index. Precision: 0.1.
  */
 @property (nonatomic, assign) float visceralFat;
 
 /**
- 肌肉率(百分比, 精度:0.1)
+ Muscle percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float musclePercent;
 
 /**
- 基础代谢率(单位:kcal)
+ Basal metabolic rate (kcal).
  */
 @property (nonatomic, assign) NSUInteger bmr;
 
 /**
- 骨重(单位:kg,精度:0.1)
+ Bone mass (kg). Precision: 0.1.
  */
 @property (nonatomic, assign) float boneMass;
 
 /**
- 水含量(百分比,精度:0.1)
+ Body-water percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float moisturePercent;
 
 /**
- 身体年龄
+ Physical age.
  */
 @property (nonatomic, assign) float physicalAge;
 
 /**
- 蛋白率(百分比,精度:0.1)
+ Protein percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float proteinPercent;
 
 /**
- 骨骼肌率(百分比,精度:0.1)
+ Skeletal-muscle percentage (%). Precision: 0.1.
  */
 @property (nonatomic, assign) float smPercent;
 
 /**
- 身体评分
+ Body score.
  */
 @property (nonatomic, assign) float bodyScore;
 
@@ -268,163 +268,163 @@
 @property (nonatomic, assign) float whr;
 
 /**
- 腰围
+ Waist circumference.
  */
 @property (nonatomic, assign) float        waist;
 /**
- 胸围
+ Chest circumference.
  */
 @property (nonatomic, assign) float        chest;
 /**
- 臀围
+ Hip circumference.
  */
 @property (nonatomic, assign) float        hip;
 /**
- 臂围
+ Arm circumference.
  */
 @property (nonatomic, assign) float        arm;
 /**
- 腿围
+ Thigh circumference.
  */
 @property (nonatomic, assign) float        thigh;
 /**
- 颈围
+ Neck circumference.
  */
 @property (nonatomic, assign) float        neck;
 
 
 /**
- 身体类型
+ Body type.
  */
 @property (nonatomic, assign) NSUInteger bodyType;
 
 /**
- 目标体重
+ Target weight.
  */
 @property (nonatomic, assign) float         targetWeight;
 
 /**
- 体重控制
+ Weight-control target (delta vs current weight).
  */
 @property (nonatomic, assign) float         weightControl;
 
 /**
- 脂肪量控制
+ Body-fat-mass control target (delta).
  */
 @property (nonatomic, assign) float         bfmControl;
 
 /**
- 去脂体重控制
+ Fat-free-mass control target (delta).
  */
 @property (nonatomic, assign) float         ffmControl;
 
 /**
- 标准体重
+ Standard weight (reference).
  */
 @property (nonatomic, assign) float        weightStandard;
 
 /**
- 标准脂肪量
+ Standard body-fat mass (reference).
  */
 @property (nonatomic, assign) float        bfmStandard;
 
 /**
- 标准BMI
+ Standard BMI (reference).
  */
 @property (nonatomic, assign) float        bmiStandard;
 
 /**
- 标准骨骼肌量
+ Standard skeletal-muscle mass (reference).
  */
 @property (nonatomic, assign) float        smmStandard;
 
 /**
- 标准去脂体重
+ Standard fat-free mass (reference).
  */
 @property (nonatomic, assign) float        ffmStandard;
 
 
-@property (nonatomic, assign) int            bmrStandard;       // 标准BMR
+@property (nonatomic, assign) int            bmrStandard;       // Standard BMR (reference).
 
-@property (nonatomic, assign) float        bfpStandard;       // 标准体脂率
+@property (nonatomic, assign) float        bfpStandard;       // Standard body-fat percentage (reference).
 
 
 
-@property (nonatomic, assign) float      bmiMax;              // bmi标准的最大值
-@property (nonatomic, assign) float      bmiMin;              // bmi标准的最小值
-@property (nonatomic, assign) float      bfmMax;              // 脂肪量标准的最大值
-@property (nonatomic, assign) float      bfmMin;              // 脂肪量标准的最小值
-@property (nonatomic, assign) float      bfpMax;              // 脂肪率标准的最大值
-@property (nonatomic, assign) float      bfpMin;              // 脂肪率标准的最小值
-@property (nonatomic, assign) float      weightMax;           // 体重标准的最大值
-@property (nonatomic, assign) float      weightMin;           // 体重标准的最小值
-@property (nonatomic, assign) float      smmMax;              // 骨骼肌量标准的最大值
-@property (nonatomic, assign) float      smmMin;              // 骨骼肌量标准的最小值
-@property (nonatomic, assign) float      boneMax;             // 骨量标准的最大值
-@property (nonatomic, assign) float      boneMin;             // 骨量标准的最小值
-@property (nonatomic, assign) float      waterMassMax;        // 含水量标准的最大值
-@property (nonatomic, assign) float      waterMassMin;        // 含水量标准的最小值
-@property (nonatomic, assign) float      proteinMassMax;      // 蛋白量标准的最大值
-@property (nonatomic, assign) float      proteinMassMin;      // 蛋白量标准的最小值
-@property (nonatomic, assign) float      muscleMassMax;       // 肌肉量标准的最大值
-@property (nonatomic, assign) float      muscleMassMin;       // 肌肉量标准的最小值
-@property (nonatomic, assign) NSUInteger   bmrMax;              // bmr标准的最大值
-@property (nonatomic, assign) NSUInteger   bmrMin;              // bmr标准的最小值
+@property (nonatomic, assign) float      bmiMax;              // BMI reference upper bound.
+@property (nonatomic, assign) float      bmiMin;              // BMI reference lower bound.
+@property (nonatomic, assign) float      bfmMax;              // Body-fat-mass reference upper bound.
+@property (nonatomic, assign) float      bfmMin;              // Body-fat-mass reference lower bound.
+@property (nonatomic, assign) float      bfpMax;              // Body-fat-percentage reference upper bound.
+@property (nonatomic, assign) float      bfpMin;              // Body-fat-percentage reference lower bound.
+@property (nonatomic, assign) float      weightMax;           // Weight reference upper bound.
+@property (nonatomic, assign) float      weightMin;           // Weight reference lower bound.
+@property (nonatomic, assign) float      smmMax;              // Skeletal-muscle-mass reference upper bound.
+@property (nonatomic, assign) float      smmMin;              // Skeletal-muscle-mass reference lower bound.
+@property (nonatomic, assign) float      boneMax;             // Bone-mass reference upper bound.
+@property (nonatomic, assign) float      boneMin;             // Bone-mass reference lower bound.
+@property (nonatomic, assign) float      waterMassMax;        // Water-mass reference upper bound.
+@property (nonatomic, assign) float      waterMassMin;        // Water-mass reference lower bound.
+@property (nonatomic, assign) float      proteinMassMax;      // Protein-mass reference upper bound.
+@property (nonatomic, assign) float      proteinMassMin;      // Protein-mass reference lower bound.
+@property (nonatomic, assign) float      muscleMassMax;       // Muscle-mass reference upper bound.
+@property (nonatomic, assign) float      muscleMassMin;       // Muscle-mass reference lower bound.
+@property (nonatomic, assign) NSUInteger   bmrMax;              // BMR reference upper bound.
+@property (nonatomic, assign) NSUInteger   bmrMin;              // BMR reference lower bound.
 
 /**
- 骨骼肌质量指数
+ Skeletal-muscle mass index (SMI).
  */
 @property (nonatomic, assign) float        smi;
 
 /**
- 肥胖程度
+ Obesity degree.
  */
 @property (nonatomic, assign) NSUInteger      obesityDegree;
 
 
 
 /**
- 电极数，4电极或者8电极
+ Number of electrodes (4 or 8).
  */
 @property (nonatomic, assign) NSUInteger electrode;
 
 /**
- 全身阻抗(单位:欧姆ohm),如阻抗等于0，则代表测量不到阻抗
+ Whole-body impedance (ohms). 0 means impedance could not be measured.
  */
 @property (nonatomic, assign) float imp;
 
 /**
- 左手阻抗(8电极)(单位:欧姆ohm),如阻抗等于0，则代表测量不到阻抗
+ Left-hand impedance (8-electrode scales only, ohms). 0 means not measured.
  */
 @property (nonatomic, assign) float imp2;
 
 /**
- 右手阻抗(8电极)(单位:欧姆ohm),如阻抗等于0，则代表测量不到阻抗
+ Right-hand impedance (8-electrode scales only, ohms). 0 means not measured.
  */
 @property (nonatomic, assign) float imp3;
 
 /**
- 左腳阻抗(8电极)(单位:欧姆ohm),如阻抗等于0，则代表测量不到阻抗
+ Left-foot impedance (8-electrode scales only, ohms). 0 means not measured.
  */
 @property (nonatomic, assign) float imp4;
 
 /**
- 右腳阻抗(8电极)(单位:欧姆ohm),如阻抗等于0，则代表测量不到阻抗
+ Right-foot impedance (8-electrode scales only, ohms). 0 means not measured.
  */
 @property (nonatomic, assign) float imp5;
 
 /**
- 体重扩展数据(8电极的部分数据在这里面)
+ Extended weight data (the additional 8-electrode fields live here).
  */
 @property (nonatomic, strong) ICWeightExtData *extData;
 
 /**
- 数据计算方式(0:sdk，1:设备计算)
+ Data-calculation method (0: SDK, 1: device).
  */
 @property (nonatomic, assign) NSUInteger data_calc_type;
 
 /**
- 本次体脂数据计算的算法类型
+ Body-fat algorithm version used for this reading.
  */
 @property (nonatomic, assign) ICBFAType bfa_type;
 
@@ -437,20 +437,20 @@
 
 
 /**
- 上肢均衡评估
+ Upper-limb balance evaluation.
  */
 @property (nonatomic, assign)ICBodyBalanceEvaluation armBalance;
 /**
- 下肢均衡评估
+ Lower-limb balance evaluation.
  */
 @property (nonatomic, assign)ICBodyBalanceEvaluation legBalance;
 /**
- 上-下肢均衡评估
+ Upper-to-lower-limb balance evaluation.
  */
 @property (nonatomic, assign)ICBodyBalanceEvaluation armAndLegBalance;
 
 /**
- * 测量模式
+ * Measurement mode.
  */
 @property (nonatomic, assign)ICScaleMeasureMode measureMode;
 

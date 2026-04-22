@@ -3,74 +3,74 @@
 //  ICDeviceManager
 //
 //  Created by Symons on 2018/7/28.
-//  Copyright © 2018年 Symons. All rights reserved.
+//  Copyright (c) 2018 Symons. All rights reserved.
 //
 
 #import <Foundation/Foundation.h>
 #import "ICConstant.h"
 
 /**
- 扫描到的蓝牙设备信息
+ Information about a scanned Bluetooth device.
  */
 @interface ICScanDeviceInfo : NSObject
 
 /**
- 广播名
+ Advertised name.
  */
 @property (nonatomic, strong) NSString *name;
 
 /**
- 设备类型
+ Device type.
  */
 @property (nonatomic, assign) ICDeviceType type;
 
 /**
- 设备子类型
+ Device sub-type.
  */
 @property (nonatomic, assign) ICDeviceSubType subType;
 
 /**
- 设备通讯方式
+ Device communication method.
  */
 @property (nonatomic, assign) ICDeviceCommunicationType communicationType;
     
 /**
- mac地址
+ MAC address.
  */
 @property (nonatomic, strong) NSString *macAddr;
 
 /**
- 服务ID列表
+ Service UUID list.
  */
 @property (nonatomic, strong) NSArray<NSString *> *services;
 
 /**
- 信号强度(越小越大，0:系统配对设备，-128:信号值有误)
+ Signal strength (RSSI). 0: system-paired device. -128: invalid RSSI.
  */
 @property (nonatomic, assign) NSInteger rssi;
 
 /**
- 基站随机码
+ Base-station random code.
 */
 @property (nonatomic, assign) NSUInteger st_no;
 
 /**
- 节点ID
+ Node ID.
 */
 @property (nonatomic, assign) NSUInteger nodeId;
 
 /**
- 设备标记,0表示没有
+ Device flag; 0 means none.
  */
 @property (nonatomic, assign) NSUInteger deviceFlag;
 
 /**
- *  设备功能类
+ *  Device function codes.
  */
 @property (nonatomic, copy)  NSArray<NSNumber *> *deviceFunctions;
 
 /**
- 绑定状态, 0: 未绑定，1:已绑定，2:不支持查询
+ Binding status. 0: not bound, 1: bound, 2: query unsupported.
 */
 @property (nonatomic, assign) NSUInteger bindStatus;
 

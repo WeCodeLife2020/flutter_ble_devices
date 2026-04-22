@@ -11,7 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ICSkipDeviceInfo : ICDeviceInfo
 /**
- * 最大支持的跳绳数量
+ * Maximum supported jump-rope count.
  */
 @property (nonatomic, assign) NSUInteger maxSkipCount;
 
