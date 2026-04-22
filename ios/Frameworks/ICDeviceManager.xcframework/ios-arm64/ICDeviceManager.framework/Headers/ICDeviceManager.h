@@ -12,6 +12,7 @@
 #import "ICModels_Inc.h"
 #import "ICCallback_Inc.h"
 #import "ICBodyFatAlgorithmsManager.h"
+#import "ICCrc.h"
 
 @interface ICDeviceManager : NSObject
 
