@@ -62,6 +62,30 @@ dependencies:
 
 The AARs are already vendored in `android/libs/`. Nothing else is required.
 
+#### Updating the Lepu AAR
+
+The vendored `lepu-blepro-1.2.0.aar` has been post-processed so that every
+`Log.d` / `toString()` / error-message string embedded in the compiled
+classes reads in English rather than Chinese. Our plugin's own logs, and
+the iOS `VTMProductLib`, are already English-only; the Android patcher
+closes the last gap.
+
+When Lepu ships a new AAR, re-run the patcher:
+
+```sh
+# 1. Drop the new vendor AAR into android/libs/, overwriting the old one.
+cp <new>/lepu-blepro-X.Y.Z.aar android/libs/lepu-blepro-1.2.0.aar
+
+# 2. Run the patcher (idempotent; creates a .orig backup on first run).
+python3 tools/translate_lepu_aar.py
+```
+
+The script walks every `CONSTANT_Utf8` entry in every `.class` file inside
+the AAR's `classes.jar`, replaces each Chinese literal with its English
+translation, and re-packs the AAR in place. It fails loudly if a new
+Chinese literal shows up with no mapping, so you'll get a list of strings
+to translate before the AAR is considered clean.
+
 ### iOS
 
 The iOS plugin ships as two CocoaPods subspecs:

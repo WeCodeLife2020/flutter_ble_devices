@@ -31,3 +31,7 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 /build/
 /coverage/
+
+# Backup created by tools/translate_lepu_aar.py -- the original vendor AAR
+# is reproducible from Lepu's distribution and should not be tracked.
+android/libs/*.aar.orig
