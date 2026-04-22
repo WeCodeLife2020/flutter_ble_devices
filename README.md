@@ -169,7 +169,9 @@ BluetodevController.measurementStream.listen((m) {
 await BluetodevController.scan();
 // ... user picks a device ...
 await BluetodevController.connect(model: device.model, mac: device.mac);
-await BluetodevController.startMeasurement();
+await BluetodevController.startMeasurement();               // default mode
+// BP2/BP2A/BP2T/BP2W → `mode` selects the device state first
+await BluetodevController.startMeasurement(mode: 'bp');     // or 'ecg' / 'history' / 'ready' / 'off'
 ```
 
 ---
@@ -182,10 +184,25 @@ await BluetodevController.startMeasurement();
 | `model` integer | `Bluetooth.MODEL_*` from Lepu SDK | Same ids — mapped from the advertised name by `VTMDeviceTypeMapper` |
 | Scanning filter | Lepu native filter by model | Client-side filter by model after name classification |
 | iComon scales | Supported (`sdk: 'icomon'`) | Supported (`sdk: 'icomon'`) via `ICDeviceManager.xcframework` |
-| Real-time ECG | Structured `ecgFloats`/`ecgShorts` | Same, via `VTMBLEParser` |
+| Real-time ECG (ER1/ER2) | Structured `ecgFloats`/`ecgShorts` | Structured `ecgFloats`/`ecgShorts` via `VTMBLEParser` |
 | Real-time O2 (AA path) | Structured | Structured, via `VTO2Parser` |
-| Real-time BP2 / WOxi / FOxi / Scale / ER3 / M-series | Structured (Lepu parsers) | Emitted as `raw` base64 — parsers not exposed in the iOS xcframework headers. File a PR to add protocol-level parsing. |
+| Real-time BP2 / BP2A / BP2T / BP2W | Structured (`measureType`, `sys`, `dia`, `mean`, `pr`, `pressure`, `ecgFloats`, …) | **Structured** via `VTMBLEParser (BP)` — same field names as Android. `startMeasurement(mode: 'bp'/'ecg')` drives the device-side state switch that Android's `BleServiceHelper.startRtTask` does internally. |
+| Real-time WOxi (O2Ring S) | Structured (`spo2`, `pr`, `pi`, `waveData`, …) | **Structured** via `VTMBLEParser.woxi_parseRealData:` |
+| Real-time FOxi (PF-10BWS family) | Structured | **Structured** via `VTMBLEParser.foxi_parseMeasureInfo:` / `foxi_parseMeasureWave:` |
+| Real-time Scale (S1 / F4) | Structured | **Structured** via `VTMBLEParser (Scale)` |
+| Real-time ER3 / M-series | Structured | **Structured** via `VTMBLEParser.parseER3RealTimeData:` / `parseMSeriesRunParams:` (compressed waveform surfaced as base64) |
 | Real-time AirBP | Scan-only — no AirBP-specific handler wired in the Android plugin yet. | Fully wired: structured `sys`/`dia`/`mean`/`pr` + live `pressure` via `VTAirBPPacket` (plain Nordic UART, no external SDK). |
+
+### Polling vs push
+
+The Android Lepu SDK's `BleServiceHelper.startRtTask(model)` drives the
+real-time command pipe internally, so Dart just sees events flow. On iOS
+most URAT commands (`requestECGRealData`, `requestBPRealData`,
+`requestScaleRealData`, `requestER3ECGRealData`, `baby_requestRunParams`)
+are one-shot GETs, so the plugin runs a light `NSTimer`-based poll at
+300–500 ms cadence for those families. `WOxi` and `FOxi` use push
+subscriptions (`observeParameters:` / `foxi_makeInfoSend:`), so those are
+**not** polled. `stopMeasurement` and `disconnect` tear the timer down.
 
 ### Model-id mapping (summary)
 
@@ -210,7 +227,22 @@ Emitted on `BluetodevController.eventStream`:
 { 'event': 'battery',   'state', 'percent', 'voltage' }
 ```
 
-On iOS, unstructured device responses are emitted as:
+### `rtData` fields per family
+
+| `deviceFamily` | Fields |
+| --- | --- |
+| `er1`, `er2` | `hr`, `battery`, `batteryState`, `recordTime`, `curStatus`, `ecgFloats` (mV), `ecgShorts`, `samplingRate`, `mvConversion` |
+| `bp2`, `bp3` | `deviceStatus`, `batteryState`, `batteryPercent`, `paramDataType`, `measureType` ∈ {`bp_measuring`, `bp_result`, `ecg_measuring`, `ecg_result`, `idle`, `bp_status`, `bp_pressure`}, plus per-measureType fields: **bp_measuring** `pressure`, `pr`, `isDeflate`, `isPulse`; **bp_result** `sys`, `dia`, `mean`, `pr`, `result`, `stateCode`; **ecg_measuring** `hr`, `curDuration`, `isLeadOff`, `isPoolSignal`, `ecgFloats`, `ecgShorts`, `samplingRate`, `mvConversion`; **ecg_result** `hr`, `qrs`, `pvcs`, `qtc`, `result` |
+| `airbp` | `measureType` ∈ {`bp_measuring`, `bp_result`, `bp_status`}, `pressure`, `pulseWave`, `sys`, `dia`, `mean`, `pr`, `state`, `timestamp` |
+| `oxy` (legacy) | `spo2`, `pr`, `pi`, `battery`, `batteryState`, `state`, `vector` |
+| `woxi` | `spo2`, `pr`, `pi`, `battery`, `batteryState`, `state`, `sensorState`, `motion`, `recordTime`, `waveData` |
+| `foxi` | `spo2`, `pr`, `pi`, `status`, `batLevel`, `probeOff` |
+| `scale` (S1) | `weightKg`, `impedance`, `heartRate`, `runStatus`, `leadStatus` |
+| `icomon` | `weightKg`, `bmi`, `fat`, `fat_mass`, `muscle`, `musclePercent`, `water`, `bone`, `protein`, `bmr`, `visceral`, `skeletal_muscle`, `subcutaneous`, `body_age`, `body_score`, `heartRate`, `impedance` |
+| `er3`, `mseries` | `hr`, `spo2`, `pr`, `pi`, `temperature`, `respRate`, `battery`, `batteryState`, `runStatus`, `leadMode`, `leadState`, `samplingNum`, `waveInfo` |
+| `baby` | `runStatus`, `attitude`, `wearStatus`, `rr`, `alarmTypeRR`, `temperature`, `alarmTypeTemp`, `battery`, `batteryState`, `startupTime`, `gestureAlarm` |
+
+On iOS, unstructured device responses (unmapped cmdTypes) are emitted as:
 
 ```
 { 'event': 'raw', 'cmdType', 'deviceType', 'data': '<base64>' }

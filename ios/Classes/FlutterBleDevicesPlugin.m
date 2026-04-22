@@ -110,6 +110,14 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 @property (nonatomic, strong) NSArray<NSNumber *> *scanModelFilter;
 @property (nonatomic, assign) BOOL scanRequested;       // scan requested while central not powered on
 
+// Real-time polling (Android's BleServiceHelper.startRtTask drives this
+// internally; on iOS we have to poll the URAT channel ourselves for the
+// device families whose SDK command is a single-shot GET rather than a
+// push subscription).
+@property (nonatomic, strong) NSTimer *rtPollTimer;
+@property (nonatomic, assign) BOOL measuring;
+@property (nonatomic, assign) uint32_t mSeriesPollIndex;
+
 // Pending commands
 @property (nonatomic, copy)   FlutterResult pendingInitResult;
 
@@ -415,6 +423,7 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     }
 #endif
     // Tear down Viatom utils
+    [self stopRtPoll];
     self.uratUtil = nil;
     self.o2Util   = nil;
     self.connectedModel = -1;
@@ -428,6 +437,14 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 - (void)handleStartMeasurement:(FlutterMethodCall *)call result:(FlutterResult)result {
     if (![self ensureReady:result]) return;
     VTMDeviceMapping *m = self.activeMapping;
+
+    // Optional `mode` argument — currently only used by the BP family to
+    // switch the device into BP-measure vs ECG-measure vs history review
+    // before real-time polling begins.
+    NSString *mode = [call.arguments isKindOfClass:NSDictionary.class]
+                   ? (call.arguments[@"mode"] ?: @"")
+                   : @"";
+
     if (m.protocolPath == VTMProtocolPathIComon) {
         // iComon scales stream weight data automatically after connection —
         // no explicit start command is required.
@@ -442,44 +459,92 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     if (m.protocolPath == VTMProtocolPathO2Legacy) {
         [self.o2Util beginGetRealData];
         [self.o2Util beginGetRealWave];
-    } else {
-        switch (m.vtmDeviceType) {
-            case VTMDeviceTypeECG:
-                [self.uratUtil requestECGRealData];
-                break;
-            case VTMDeviceTypeBP:
-                [self.uratUtil requestBPRealData];
-                break;
-            case VTMDeviceTypeScale:
-                [self.uratUtil requestScaleRealData];
-                [self.uratUtil requestScaleRealWve];
-                break;
-            case VTMDeviceTypeER3:
-                [self.uratUtil requestER3ECGRealData];
-                break;
-            case VTMDeviceTypeMSeries:
-                [self.uratUtil requestMSeriesRunParamsWithIndex:0];
-                break;
-            case VTMDeviceTypeWOxi:
-                [self.uratUtil woxi_requestWOxiRealData];
-                [self.uratUtil observeParameters:YES waveform:YES rawdata:NO accdata:NO];
-                break;
-            case VTMDeviceTypeFOxi:
-                [self.uratUtil foxi_makeInfoSend:YES];
-                [self.uratUtil foxi_makeWaveSend:YES];
-                break;
-            case VTMDeviceTypeBabyPatch:
-                [self.uratUtil baby_requestRunParams];
-                break;
-            default:
-                break;
+        self.measuring = YES;
+        result(@YES);
+        return;
+    }
+
+    // URAT path. Kick off the first poll synchronously so Dart sees
+    // feedback immediately, then schedule a repeating timer because
+    // most Viatom URAT commands are single-shot GETs.
+    switch (m.vtmDeviceType) {
+        case VTMDeviceTypeECG: {
+            [self.uratUtil requestECGRealData];
+            [self startRtPollEvery:0.3 withBlock:^(VTMURATUtils *u) {
+                [u requestECGRealData];
+            }];
+            break;
         }
+        case VTMDeviceTypeBP: {
+            // Android's startRtTask(bp2) implicitly flips the BP2 into
+            // the requested measurement mode before polling.  Mirror
+            // that: 0=BP, 1=ECG, 2=history, 3=ready, 4=shutdown.
+            u_char target = VTMBPTargetStatusBP;
+            if ([mode isEqualToString:@"ecg"])      target = VTMBPTargetStatusECG;
+            else if ([mode isEqualToString:@"history"]) target = VTMBPTargetStatusHistory;
+            else if ([mode isEqualToString:@"ready"])   target = VTMBPTargetStatusStart;
+            else if ([mode isEqualToString:@"off"])     target = VTMBPTargetStatusEnd;
+            [self.uratUtil requestChangeBPState:target];
+            [self.uratUtil requestBPRealData];
+            [self startRtPollEvery:0.4 withBlock:^(VTMURATUtils *u) {
+                [u requestBPRealData];
+            }];
+            break;
+        }
+        case VTMDeviceTypeScale: {
+            [self.uratUtil requestScaleRealData];
+            [self.uratUtil requestScaleRealWve];
+            [self startRtPollEvery:0.3 withBlock:^(VTMURATUtils *u) {
+                [u requestScaleRealData];
+                [u requestScaleRealWve];
+            }];
+            break;
+        }
+        case VTMDeviceTypeER3: {
+            [self.uratUtil requestER3ECGRealData];
+            [self startRtPollEvery:0.5 withBlock:^(VTMURATUtils *u) {
+                [u requestER3ECGRealData];
+            }];
+            break;
+        }
+        case VTMDeviceTypeMSeries: {
+            self.mSeriesPollIndex = 0;
+            [self.uratUtil requestMSeriesRunParamsWithIndex:0];
+            [self startRtPollEvery:0.5 withBlock:^(VTMURATUtils *u) {
+                [u requestMSeriesRunParamsWithIndex:self.mSeriesPollIndex++];
+            }];
+            break;
+        }
+        case VTMDeviceTypeWOxi: {
+            // Push subscription — no polling required.
+            [self.uratUtil observeParameters:YES waveform:YES rawdata:NO accdata:NO];
+            [self.uratUtil woxi_requestWOxiRealData];
+            self.measuring = YES;
+            break;
+        }
+        case VTMDeviceTypeFOxi: {
+            // Push subscription — no polling required.
+            [self.uratUtil foxi_makeInfoSend:YES];
+            [self.uratUtil foxi_makeWaveSend:YES];
+            self.measuring = YES;
+            break;
+        }
+        case VTMDeviceTypeBabyPatch: {
+            [self.uratUtil baby_requestRunParams];
+            [self startRtPollEvery:2.0 withBlock:^(VTMURATUtils *u) {
+                [u baby_requestRunParams];
+            }];
+            break;
+        }
+        default:
+            break;
     }
     result(@YES);
 }
 
 - (void)handleStopMeasurement:(FlutterMethodCall *)call result:(FlutterResult)result {
     if (![self ensureReady:result]) return;
+    [self stopRtPoll];
     VTMDeviceMapping *m = self.activeMapping;
     if (m.protocolPath == VTMProtocolPathIComon) {
         result(@YES);
@@ -504,6 +569,31 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
         [self.uratUtil exitER3MeasurementMode];
     }
     result(@YES);
+}
+
+#pragma mark - Real-time polling
+
+- (void)startRtPollEvery:(NSTimeInterval)interval
+               withBlock:(void (^)(VTMURATUtils *util))tick {
+    [self stopRtPoll];
+    self.measuring = YES;
+    __weak typeof(self) weakSelf = self;
+    self.rtPollTimer = [NSTimer scheduledTimerWithTimeInterval:interval
+                                                        repeats:YES
+                                                          block:^(NSTimer * _Nonnull t) {
+        __strong typeof(weakSelf) s = weakSelf;
+        if (s == nil) { [t invalidate]; return; }
+        if (!s.measuring || s.uratUtil == nil) { [t invalidate]; return; }
+        tick(s.uratUtil);
+    }];
+}
+
+- (void)stopRtPoll {
+    self.measuring = NO;
+    if (self.rtPollTimer) {
+        [self.rtPollTimer invalidate];
+        self.rtPollTimer = nil;
+    }
 }
 
 - (void)handleGetDeviceInfo:(FlutterMethodCall *)call result:(FlutterResult)result {
@@ -689,6 +779,7 @@ didDisconnectPeripheral:(CBPeripheral *)peripheral
                  error:(NSError *)error {
     FBD_LOG(@"didDisconnect uuid=%@ err=%@",
             peripheral.identifier.UUIDString, error.localizedDescription);
+    [self stopRtPoll];
     self.activePeripheral = nil;
     self.activeMapping    = nil;
     self.connectedModel   = -1;
@@ -886,106 +977,384 @@ commandCompletion:(u_char)cmdType
 }
 
 - (void)parseBPResponse:(NSData *)response cmdType:(u_char)cmdType {
-    // VTProductLib 2.0 introduced BP2 RT parsing but does NOT expose a
-    // public C-struct parser in the xcframework headers we have. We surface
-    // base64 bytes so the Dart layer can decode if desired and also derive
-    // a best-effort status byte. Users needing rich BP2 RT data should file
-    // a PR to parse the protocol here.
-    if (cmdType == VTMBPCmdGetRealData || cmdType == VTMBPCmdGetRealPressure ||
-        cmdType == VTMBPCmdGetRealStatus) {
-        NSString *measureType = (cmdType == VTMBPCmdGetRealPressure) ? @"bp_measuring"
-                              : (cmdType == VTMBPCmdGetRealStatus)   ? @"status"
-                              :                                         @"bp_result";
-        [self sendEvent:@{@"event": @"rtData",
-                          @"deviceType": @"bp",
-                          @"deviceFamily": self.activeMapping.family ?: @"bp2",
-                          @"model": @(self.connectedModel),
-                          @"measureType": measureType,
-                          @"raw": [response base64EncodedStringWithOptions:0]}];
+    NSString *family = self.activeMapping.family ?: @"bp2";
+
+    // Real-time data packet: contains run-status AND the measurement payload
+    // determined by the `type` byte (0=BP measuring, 1=BP result,
+    // 2=ECG measuring, 3=ECG result, 4=idle).
+    if (cmdType == VTMBPCmdGetRealData) {
+        VTMBPRealTimeData rt = [VTMBLEParser parseBPRealTimeData:response];
+        NSMutableDictionary *d = [@{
+            @"event":          @"rtData",
+            @"deviceType":     @"bp",
+            @"deviceFamily":   family,
+            @"model":          @(self.connectedModel),
+            @"deviceStatus":   @(rt.run_status.status),
+            @"batteryState":   @(rt.run_status.battery.state),
+            @"batteryPercent": @(rt.run_status.battery.percent),
+            @"paramDataType":  @(rt.rt_wav.type),
+        } mutableCopy];
+
+        NSData *dataSlice = [NSData dataWithBytes:rt.rt_wav.data length:sizeof(rt.rt_wav.data)];
+        switch (rt.rt_wav.type) {
+            case 0: {
+                VTMBPMeasuringData mm = [VTMBLEParser parseBPMeasuringData:dataSlice];
+                d[@"measureType"] = @"bp_measuring";
+                d[@"pressure"]    = @(mm.pressure);
+                d[@"pr"]          = @(mm.pulse_rate);
+                d[@"isDeflate"]   = @(mm.is_deflating != 0);
+                d[@"isPulse"]     = @(mm.is_get_pulse != 0);
+                break;
+            }
+            case 1: {
+                VTMBPEndMeasureData mr = [VTMBLEParser parseBPEndMeasureData:dataSlice];
+                d[@"measureType"] = @"bp_result";
+                d[@"sys"]         = @(mr.systolic_pressure);
+                d[@"dia"]         = @(mr.diastolic_pressure);
+                d[@"mean"]        = @(mr.mean_pressure);
+                d[@"pr"]          = @(mr.pulse_rate);
+                d[@"result"]      = @(mr.medical_result);
+                d[@"stateCode"]   = @(mr.state_code);
+                break;
+            }
+            case 2: {
+                VTMECGMeasuringData em = [VTMBLEParser parseECGMeasuringData:dataSlice];
+                d[@"measureType"]  = @"ecg_measuring";
+                d[@"hr"]           = @(em.pulse_rate);
+                d[@"curDuration"]  = @(em.duration);
+                d[@"isLeadOff"]    = @((em.special_status & 0x02) != 0);
+                d[@"isPoolSignal"] = @((em.special_status & 0x01) != 0);
+                NSMutableArray *mv = [NSMutableArray arrayWithCapacity:rt.rt_wav.wav.sampling_num];
+                NSMutableArray *sh = [NSMutableArray arrayWithCapacity:rt.rt_wav.wav.sampling_num];
+                for (int i = 0; i < rt.rt_wav.wav.sampling_num && i < 300; i++) {
+                    short s = rt.rt_wav.wav.wave_data[i];
+                    [sh addObject:@(s)];
+                    [mv addObject:@([VTMBLEParser bpMvFromShort:s])];
+                }
+                d[@"ecgFloats"]    = mv;
+                d[@"ecgShorts"]    = sh;
+                d[@"samplingRate"] = @250;
+                d[@"mvConversion"] = @0.003098;
+                break;
+            }
+            case 3: {
+                VTMECGEndMeasureData er = [VTMBLEParser parseECGEndMeasureData:dataSlice];
+                d[@"measureType"] = @"ecg_result";
+                d[@"hr"]          = @(er.hr);
+                d[@"qrs"]         = @(er.qrs);
+                d[@"pvcs"]        = @(er.pvcs);
+                d[@"qtc"]         = @(er.qtc);
+                d[@"result"]      = @(er.result);
+                break;
+            }
+            default:
+                d[@"measureType"] = @"idle";
+                break;
+        }
+        [self sendEvent:d];
         return;
     }
+
+    if (cmdType == VTMBPCmdGetRealStatus) {
+        VTMBPRunStatus st = [VTMBLEParser parseBPRealTimeStatus:response];
+        [self sendEvent:@{@"event":          @"rtData",
+                          @"deviceType":     @"bp",
+                          @"deviceFamily":   family,
+                          @"model":          @(self.connectedModel),
+                          @"measureType":    @"bp_status",
+                          @"deviceStatus":   @(st.status),
+                          @"batteryState":   @(st.battery.state),
+                          @"batteryPercent": @(st.battery.percent)}];
+        return;
+    }
+
+    if (cmdType == VTMBPCmdGetRealPressure) {
+        VTMRealTimePressure p = [VTMBLEParser parseBPRealTimePressure:response];
+        [self sendEvent:@{@"event":        @"rtData",
+                          @"deviceType":   @"bp",
+                          @"deviceFamily": family,
+                          @"model":        @(self.connectedModel),
+                          @"measureType":  @"bp_pressure",
+                          @"pressure":     @(p.pressure)}];
+        return;
+    }
+
     if (cmdType == VTMBPCmdGetConfig) {
-        [self sendEvent:@{@"event": @"deviceConfig",
-                          @"family": self.activeMapping.family ?: @"bp2",
-                          @"raw": [response base64EncodedStringWithOptions:0]}];
+        VTMBPConfig cfg = [VTMBLEParser parseBPConfig:response];
+        [self sendEvent:@{@"event":      @"deviceConfig",
+                          @"family":     family,
+                          @"model":      @(self.connectedModel),
+                          @"calibZero":  @(cfg.last_calib_zero),
+                          @"calibSlope": @(cfg.calib_slope),
+                          @"volume":     @(cfg.volume),
+                          @"unit":       @(cfg.unit),
+                          @"timeUtc":    @(cfg.time_utc)}];
         return;
     }
+
     [self emitRaw:response cmd:cmdType dev:VTMDeviceTypeBP];
 }
 
 - (void)parseScaleResponse:(NSData *)response cmdType:(u_char)cmdType {
-    NSString *sub = (cmdType == VTMSCALECmdGetRealWave)  ? @"wave"
-                  : (cmdType == VTMSCALECmdGetRealData)  ? @"data"
-                  : (cmdType == VTMSCALECmdGetRunParams) ? @"run"
-                  :                                        @"config";
-    [self sendEvent:@{@"event": [sub isEqualToString:@"wave"] ? @"rtWaveform" : @"rtData",
-                      @"deviceType": @"scale",
-                      @"deviceFamily": @"s1",
-                      @"model": @(self.connectedModel),
-                      @"subType": sub,
-                      @"raw": [response base64EncodedStringWithOptions:0]}];
+    NSString *family = self.activeMapping.family ?: @"scale";
+    if (cmdType == VTMSCALECmdGetRealData) {
+        VTMScaleRealData rt = [VTMBLEParser parseScaleRealData:response];
+        // Viatom S1 stores weight as big-endian u_short with 2-decimal
+        // precision (e.g. 7523 → 75.23 kg).  Resistance is big-endian u_int.
+        uint16_t weightBE = rt.scale_data.weight;
+        uint32_t impBE    = rt.scale_data.resistance;
+        double weightKg = CFSwapInt16BigToHost(weightBE) / 100.0;
+        uint32_t imp    = CFSwapInt32BigToHost(impBE);
+        [self sendEvent:@{@"event":          @"rtData",
+                          @"deviceType":     @"scale",
+                          @"deviceFamily":   family,
+                          @"model":          @(self.connectedModel),
+                          @"weightKg":       @(weightKg),
+                          @"impedance":      @(imp),
+                          @"heartRate":      @(rt.run_para.hr),
+                          @"runStatus":      @(rt.run_para.run_status),
+                          @"leadStatus":     @(rt.run_para.lead_status)}];
+        return;
+    }
+    if (cmdType == VTMSCALECmdGetRealWave) {
+        VTMRealTimeWF wf = [VTMBLEParser parseScaleRealTimeWaveform:response];
+        NSMutableArray *pts = [NSMutableArray arrayWithCapacity:wf.sampling_num];
+        for (int i = 0; i < wf.sampling_num && i < 300; i++) {
+            [pts addObject:@(wf.wave_data[i])];
+        }
+        [self sendEvent:@{@"event":        @"rtWaveform",
+                          @"deviceType":   @"scale",
+                          @"deviceFamily": family,
+                          @"model":        @(self.connectedModel),
+                          @"waveType":     @"ecg",
+                          @"waveData":     pts}];
+        return;
+    }
+    if (cmdType == VTMSCALECmdGetRunParams) {
+        VTMScaleRunParams rp = [VTMBLEParser parseScaleRunParams:response];
+        [self sendEvent:@{@"event":        @"rtData",
+                          @"deviceType":   @"scale",
+                          @"deviceFamily": family,
+                          @"model":        @(self.connectedModel),
+                          @"subType":      @"runParams",
+                          @"hr":           @(rp.hr),
+                          @"recordTime":   @(rp.record_time),
+                          @"runStatus":    @(rp.run_status),
+                          @"leadStatus":   @(rp.lead_status)}];
+        return;
+    }
+    [self emitRaw:response cmd:cmdType dev:VTMDeviceTypeScale];
 }
 
 - (void)parseWOxiResponse:(NSData *)response cmdType:(u_char)cmdType {
-    NSString *sub = @"unknown";
-    switch (cmdType) {
-        case VTMWOxiCmdGetRunParams:   sub = @"runParams"; break;
-        case VTMWOxiCmdGetRealData:    sub = @"real";      break;
-        case VTMWOxiCmdGetRawdata:     sub = @"raw";       break;
-        case VTMWOxiCmdPushRunParams:  sub = @"pushParams"; break;
-        case VTMWOxiCmdPushRealWave:   sub = @"pushWave"; break;
-        case VTMWOxiCmdPushRawData:    sub = @"pushRaw";  break;
-        default: break;
+    NSString *family = self.activeMapping.family ?: @"woxi";
+    if (cmdType == VTMWOxiCmdGetRealData || cmdType == VTMWOxiCmdPushRunParams) {
+        VTMWOxiRealData rd = [VTMBLEParser woxi_parseRealData:response];
+        NSMutableArray *wave = [NSMutableArray arrayWithCapacity:rd.waveform.sampling_num];
+        for (int i = 0; i < rd.waveform.sampling_num; i++) {
+            [wave addObject:@(rd.waveform.waveform_data[i])];
+        }
+        [self sendEvent:@{@"event":          @"rtData",
+                          @"deviceType":     @"oximeter",
+                          @"deviceFamily":   family,
+                          @"model":          @(self.connectedModel),
+                          @"spo2":           @(rd.run_para.spo2),
+                          @"pr":             @(rd.run_para.pr),
+                          @"pi":             @(rd.run_para.pi / 10.0),
+                          @"battery":        @(rd.run_para.battery_percent),
+                          @"batteryState":   @(rd.run_para.battery_state),
+                          @"state":          @(rd.run_para.run_status),
+                          @"sensorState":    @(rd.run_para.sensor_state),
+                          @"motion":         @(rd.run_para.motion),
+                          @"recordTime":     @(rd.run_para.record_time),
+                          @"waveData":       wave}];
+        return;
     }
-    NSString *evt = ([sub isEqualToString:@"pushWave"] || [sub isEqualToString:@"raw"] ||
-                     [sub isEqualToString:@"pushRaw"]) ? @"rtWaveform" : @"rtData";
-    [self sendEvent:@{@"event": evt,
-                      @"deviceType": @"oximeter",
-                      @"deviceFamily": @"woxi",
-                      @"model": @(self.connectedModel),
-                      @"subType": sub,
-                      @"raw": [response base64EncodedStringWithOptions:0]}];
+    if (cmdType == VTMWOxiCmdPushRealWave) {
+        // Waveform-only push packet — extract the byte payload directly.
+        NSMutableArray *pts = [NSMutableArray arrayWithCapacity:response.length];
+        const uint8_t *b = response.bytes;
+        for (NSUInteger i = 0; i < response.length; i++) [pts addObject:@(b[i])];
+        [self sendEvent:@{@"event":        @"rtWaveform",
+                          @"deviceType":   @"oximeter",
+                          @"deviceFamily": family,
+                          @"model":        @(self.connectedModel),
+                          @"waveType":     @"ppg",
+                          @"waveData":     pts}];
+        return;
+    }
+    if (cmdType == VTMWOxiCmdGetConfig) {
+        VTMWOxiInfo cfg = [VTMBLEParser woxi_parseConfig:response];
+        [self sendEvent:@{@"event":       @"deviceConfig",
+                          @"family":      family,
+                          @"model":       @(self.connectedModel),
+                          @"spo2Thr":     @(cfg.spo2_thr),
+                          @"hrThrLow":    @(cfg.hr_thr_low),
+                          @"hrThrHigh":   @(cfg.hr_thr_high),
+                          @"motor":       @(cfg.motor),
+                          @"buzzer":      @(cfg.buzzer),
+                          @"interval":    @(cfg.interval),
+                          @"brightness":  @(cfg.brightness),
+                          @"displayMode": @(cfg.display_mode)}];
+        return;
+    }
+    [self emitRaw:response cmd:cmdType dev:VTMDeviceTypeWOxi];
 }
 
 - (void)parseFOxiResponse:(NSData *)response cmdType:(u_char)cmdType {
-    NSString *sub = @"unknown";
-    switch (cmdType) {
-        case VTMFOxiCmdInfoResp: sub = @"info"; break;
-        case VTMFOxiCmdWaveResp: sub = @"wave"; break;
-        case VTMFOxiCmdGetConfig: sub = @"config"; break;
-        default: break;
+    NSString *family = self.activeMapping.family ?: @"foxi";
+    if (cmdType == VTMFOxiCmdInfoResp) {
+        VTMFOxiMeasureInfo info = [VTMBLEParser foxi_parseMeasureInfo:response];
+        [self sendEvent:@{@"event":          @"rtData",
+                          @"deviceType":     @"oximeter",
+                          @"deviceFamily":   family,
+                          @"model":          @(self.connectedModel),
+                          @"spo2":           @(info.spo2),
+                          @"pr":             @(info.pr),
+                          @"pi":             @(info.pi / 10.0),
+                          @"status":         @(info.status),
+                          @"batLevel":       @((info.res >> 6) & 0x03),
+                          @"probeOff":       @((info.status & 0x02) != 0)}];
+        return;
     }
-    NSString *evt = [sub isEqualToString:@"wave"] ? @"rtWaveform" : @"rtData";
-    [self sendEvent:@{@"event": evt,
-                      @"deviceType": @"oximeter",
-                      @"deviceFamily": @"foxi",
-                      @"model": @(self.connectedModel),
-                      @"subType": sub,
-                      @"raw": [response base64EncodedStringWithOptions:0]}];
+    if (cmdType == VTMFOxiCmdWaveResp) {
+        __block NSMutableArray *points = [NSMutableArray array];
+        __block NSMutableArray *beats  = [NSMutableArray array];
+        [VTMBLEParser foxi_parseMeasureWave:response completion:^(int num, VTMFOxiMeasureWave *wave) {
+            if (wave == NULL || num <= 0) return;
+            for (int i = 0; i < num; i++) {
+                for (int j = 0; j < 5; j++) {
+                    uint8_t v = wave[i].wavedata[j];
+                    [points addObject:@(v & 0x7F)];       // Bit0-6: waveform sample
+                    [beats  addObject:@(((v >> 7) & 1))]; // Bit7: pulse beat flag
+                }
+            }
+        }];
+        [self sendEvent:@{@"event":        @"rtWaveform",
+                          @"deviceType":   @"oximeter",
+                          @"deviceFamily": family,
+                          @"model":        @(self.connectedModel),
+                          @"waveType":     @"ppg",
+                          @"waveData":     points,
+                          @"beats":        beats}];
+        return;
+    }
+    if (cmdType == VTMFOxiCmdGetConfig) {
+        VTMFOxiConfig cfg = [VTMBLEParser foxi_parseConfig:response];
+        [self sendEvent:@{@"event":       @"deviceConfig",
+                          @"family":      family,
+                          @"model":       @(self.connectedModel),
+                          @"spo2Low":     @(cfg.spo2Low),
+                          @"prHigh":      @(cfg.prHigh),
+                          @"prLow":       @(cfg.prLow),
+                          @"alarm":       @(cfg.alramIsOn),
+                          @"beep":        @(cfg.beepIsOn),
+                          @"measureMode": @(cfg.measureMode),
+                          @"language":    @(cfg.language)}];
+        return;
+    }
+    [self emitRaw:response cmd:cmdType dev:VTMDeviceTypeFOxi];
 }
 
 - (void)parseER3Response:(NSData *)response cmdType:(u_char)cmdType {
-    NSString *sub = (cmdType == VTMER3ECGCmdGetRealData)    ? @"er3Real"
-                  : (cmdType == VTMMSeriesCmdGetRealData)   ? @"mSeriesRun"
-                  :                                            @"config";
-    [self sendEvent:@{@"event": @"rtData",
-                      @"deviceType": @"ecg",
-                      @"deviceFamily": self.activeMapping.family ?: @"er3",
-                      @"model": @(self.connectedModel),
-                      @"subType": sub,
-                      @"raw": [response base64EncodedStringWithOptions:0]}];
+    NSString *family = self.activeMapping.family ?: @"er3";
+
+    if (cmdType == VTMER3ECGCmdGetRealData) {
+        VTMER3RealTimeData rt = [VTMBLEParser parseER3RealTimeData:response];
+        // Decompressed waveform (12 leads × samples).  Pass-through as
+        // base64 — decoding 12-lead ECG bytes into float[] per lead is
+        // non-trivial and not useful for the phone display.
+        NSData *waveSlice = nil;
+        if (response.length > sizeof(rt.run_params)) {
+            waveSlice = [response subdataWithRange:NSMakeRange(sizeof(rt.run_params),
+                                                               response.length - sizeof(rt.run_params))];
+        }
+        [self sendEvent:@{@"event":          @"rtData",
+                          @"deviceType":     @"ecg",
+                          @"deviceFamily":   family,
+                          @"model":          @(self.connectedModel),
+                          @"hr":             @(rt.run_params.ecg_hr),
+                          @"respRate":       @(rt.run_params.ecg_resp_rate),
+                          @"spo2":           @(rt.run_params.oxi_spo2),
+                          @"pr":             @(rt.run_params.oxi_pr),
+                          @"pi":             @(rt.run_params.oxi_pi / 10.0),
+                          @"temperature":    @(rt.run_params.temp_val / 100.0),
+                          @"battery":        @(rt.run_params.battery_percent),
+                          @"batteryState":   @(rt.run_params.battery_state),
+                          @"recordTime":     @(rt.run_params.record_time),
+                          @"runStatus":      @(rt.run_params.run_status),
+                          @"leadMode":       @(rt.run_params.cable_type),
+                          @"leadState":      @(rt.run_params.electrodes_state),
+                          @"samplingNum":    @(rt.waveform.sampling_num),
+                          @"waveInfo":       @(rt.waveform.wave_info),
+                          @"waveOffset":     @(rt.waveform.offset),
+                          @"compressedWave": waveSlice
+                              ? [waveSlice base64EncodedStringWithOptions:0]
+                              : @""}];
+        return;
+    }
+    if (cmdType == VTMMSeriesCmdGetRealData) {
+        VTMMSeriesRunParams rp = [VTMBLEParser parseMSeriesRunParams:response];
+        VTMMSeriesFlag flag = [VTMBLEParser parseMSeiriesSysFlag:rp];
+        [self sendEvent:@{@"event":          @"rtData",
+                          @"deviceType":     @"ecg",
+                          @"deviceFamily":   family,
+                          @"model":          @(self.connectedModel),
+                          @"hr":             @(rp.hr),
+                          @"battery":        @(rp.percent),
+                          @"recordTime":     @(rp.record_time),
+                          @"leadMode":       @(rp.lead_mode),
+                          @"leadState":      @(rp.lead_state),
+                          @"batteryState":   @(flag.batteryState),
+                          @"ecgLeadState":   @(flag.ecgLeadState),
+                          @"oxyState":       @(flag.oxyState),
+                          @"tempState":      @(flag.tempState),
+                          @"measureState":   @(flag.measureState),
+                          @"firstIndex":     @(rp.first_index),
+                          @"samplingNum":    @(rp.sampling_num)}];
+        return;
+    }
+    [self emitRaw:response cmd:cmdType dev:VTMDeviceTypeER3];
 }
 
 - (void)parseBabyResponse:(NSData *)response cmdType:(u_char)cmdType {
-    NSString *sub = (cmdType == VTMBabyCmdGetRunParams) ? @"runParams"
-                  : (cmdType == VTMBabyCmdGetGesture)   ? @"gesture"
-                  :                                        @"config";
-    [self sendEvent:@{@"event": @"rtData",
-                      @"deviceType": @"baby",
-                      @"deviceFamily": @"baby",
-                      @"model": @(self.connectedModel),
-                      @"subType": sub,
-                      @"raw": [response base64EncodedStringWithOptions:0]}];
+    if (cmdType == VTMBabyCmdGetRunParams) {
+        VTMBabyRunParams rp = [VTMBLEParser baby_parseRunParams:response];
+        [self sendEvent:@{@"event":          @"rtData",
+                          @"deviceType":     @"baby",
+                          @"deviceFamily":   @"baby",
+                          @"model":          @(self.connectedModel),
+                          @"runStatus":      @(rp.run_status),
+                          @"attitude":       @(rp.attitude_status),
+                          @"wearStatus":     @(rp.wear_status),
+                          @"rr":             @(rp.rr),
+                          @"alarmTypeRR":    @(rp.alarm_type_rr),
+                          @"temperature":    @(rp.cur_temperature / 10.0),
+                          @"alarmTypeTemp":  @(rp.alarm_type_temp),
+                          @"battery":        @(rp.batInfo.percent),
+                          @"batteryState":   @(rp.batInfo.state),
+                          @"startupTime":    @(rp.startup_time),
+                          @"gestureAlarm":   @(rp.gesture_alarm)}];
+        return;
+    }
+    if (cmdType == VTMBabyCmdGetGesture) {
+        VTMBabyAtt att = [VTMBLEParser baby_parseAttitude:response];
+        [self sendEvent:@{@"event":        @"rtData",
+                          @"deviceType":   @"baby",
+                          @"deviceFamily": @"baby",
+                          @"model":        @(self.connectedModel),
+                          @"subType":      @"gesture",
+                          @"pitch":        @(att.alg_result.Pitch),
+                          @"roll":         @(att.alg_result.Roll),
+                          @"yaw":          @(att.alg_result.Yaw),
+                          @"gesture":      @(att.alg_result.gesture),
+                          @"rr":           @(att.alg_result.RR),
+                          @"accX":         @(att.acc_x),
+                          @"accY":         @(att.acc_y),
+                          @"accZ":         @(att.acc_z)}];
+        return;
+    }
+    [self emitRaw:response cmd:cmdType dev:VTMDeviceTypeBabyPatch];
 }
 
 - (void)emitRaw:(NSData *)response cmd:(u_char)cmd dev:(VTMDeviceType)dev {

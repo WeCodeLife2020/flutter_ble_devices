@@ -189,9 +189,24 @@ class BluetodevController {
   /// Start real-time measurement streaming.
   ///
   /// Optionally specify [model] to start RT task for a specific device.
-  static Future<bool> startMeasurement({int? model}) async {
+  ///
+  /// On iOS the [mode] argument is honoured for BP devices (BP2 / BP2A /
+  /// BP2T / BP2W / BP3*) and selects which internal state the device is
+  /// switched to before polling begins:
+  ///  - `'bp'`      → blood pressure measurement (default)
+  ///  - `'ecg'`     → ECG-lead-I measurement
+  ///  - `'history'` → history review
+  ///  - `'ready'`   → power-on / idle
+  ///  - `'off'`     → request shutdown
+  ///
+  /// For all other device families the argument is ignored — Android's
+  /// `BleServiceHelper.startRtTask(model)` makes the same decision
+  /// implicitly based on the model id, so you can always pass the mode
+  /// and expect identical behaviour on both platforms.
+  static Future<bool> startMeasurement({int? model, String? mode}) async {
     final result = await _method.invokeMethod<bool>('startMeasurement', {
       'model': ?model,
+      'mode': ?mode,
     });
     return result ?? false;
   }
