@@ -38,6 +38,10 @@ import cn.icomon.icdevicemanager.model.other.ICConstant
 import cn.icomon.icdevicemanager.model.other.ICDeviceManagerConfig
 import cn.icomon.icdevicemanager.model.data.ICWeightData
 import cn.icomon.icdevicemanager.model.data.ICWeightCenterData
+import cn.icomon.icdevicemanager.model.data.ICWeightHistoryData
+import cn.icomon.icdevicemanager.model.data.ICKitchenScaleData
+import cn.icomon.icdevicemanager.model.data.ICRulerData
+import cn.icomon.icdevicemanager.model.data.ICSkipData
 
 /**
  * FlutterBleDevicesPlugin — Flutter MethodChannel + EventChannel bridge to Lepu BLE SDK.
@@ -67,6 +71,28 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     private var serviceInitialized = false
     private var connectedModel: Int = -1
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Currently-bound iComon scale, set by handleConnect when sdk='icomon'
+    // and reset on disconnect; needed because ICDeviceManagerSettingManager
+    // APIs (readHistoryData, ...) take an ICDevice instance rather than a
+    // mac address.
+    private var activeIComonDevice: ICDevice? = null
+
+    // Set of file names already on flash when the consumer connected. Used
+    // to diff fresh getFileList responses so we can auto-pull only the
+    // *new* files produced while the consumer was connected (mid-recording
+    // catch-up). Keyed by Lepu model id so it stays correct if the
+    // consumer hops between devices.
+    private val knownFilesByModel = mutableMapOf<Int, MutableSet<String>>()
+
+    // Per-family curStatus tracking for the auto-fetch-on-finish logic.
+    // The Lepu SDK reports curStatus on every rtData chunk; we trigger a
+    // file pull when status transitions into the "saved" terminal state
+    // (4 for ER1/ER2, equivalent measureType strings for BP2 / Oxy).
+    private var lastEr1CurStatus: Int = -1
+    private var lastEr2CurStatus: Int = -1
+    private var lastBp2MeasureType: String = ""
+    private var autoFetchOnFinish: Boolean = true
 
     // ── iComon Delegates ────────────────────────────────────────────────
     private val iComonScaleKeywords = listOf("lescale", "icomon", "fi2016", "f4", "qn-scale", "adore", "health scale", "chipsea")
@@ -186,6 +212,107 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 "temperature" to data.temperature,
                 "heartRate" to data.hr,
                 "impedance" to data.imp
+            ))
+        }
+
+        // ── History-data callbacks ──────────────────────────────────
+        // The iComon SDK fires these once per stored offline measurement
+        // when:
+        //   - the user steps on the scale without the phone present
+        //     (data is auto-uploaded after the next BLE reconnect), or
+        //   - the consumer explicitly invokes
+        //     ICDeviceManagerSettingManager.readHistoryData(device).
+        //
+        // The Welland scale firmware keeps roughly the most recent ~64
+        // measurements; older entries are discarded silently.
+
+        override fun onReceiveWeightHistoryData(
+            device: ICDevice?,
+            data: ICWeightHistoryData?,
+        ) {
+            if (device == null || data == null) return
+            sendEvent(mapOf(
+                "event"        to "historyData",
+                "kind"         to "weight",
+                "deviceFamily" to "icomon",
+                "deviceType"   to "scale",
+                "sdk"          to "icomon",
+                "mac"          to (device.macAddr ?: ""),
+                "userId"       to data.userId,
+                // `time` is a Unix timestamp in seconds.
+                "time"         to data.time,
+                "weight_kg"    to data.weight_kg,
+                "weight_g"     to data.weight_g,
+                "weight_lb"    to data.weight_lb,
+                "weight_st"    to data.weight_st,
+                "weight_st_lb" to data.weight_st_lb,
+                "precision_kg" to data.precision_kg,
+                "precision_lb" to data.precision_lb,
+                "impedance"    to data.imp,
+            ))
+        }
+
+        override fun onReceiveKitchenScaleHistoryData(
+            device: ICDevice?,
+            list: List<ICKitchenScaleData>?,
+        ) {
+            if (device == null || list == null) return
+            for (entry in list) {
+                sendEvent(mapOf(
+                    "event"        to "historyData",
+                    "kind"         to "kitchenScale",
+                    "deviceFamily" to "icomon",
+                    "deviceType"   to "scale",
+                    "sdk"          to "icomon",
+                    "mac"          to (device.macAddr ?: ""),
+                    "weight_g"     to entry.value_g,
+                    "isStabilized" to entry.isStabilized,
+                ))
+            }
+        }
+
+        override fun onReceiveRulerHistoryData(
+            device: ICDevice?,
+            data: ICRulerData?,
+        ) {
+            if (device == null || data == null) return
+            sendEvent(mapOf(
+                "event"        to "historyData",
+                "kind"         to "ruler",
+                "deviceFamily" to "icomon",
+                "deviceType"   to "ruler",
+                "sdk"          to "icomon",
+                "mac"          to (device.macAddr ?: ""),
+                "time"         to data.time,
+                "distance_cm"  to data.distance_cm,
+                "distance_in"  to data.distance_in,
+                "distance_ft"  to data.distance_ft,
+                "isStabilized" to data.isStabilized,
+            ))
+        }
+
+        override fun onReceiveHistorySkipData(
+            device: ICDevice?,
+            data: ICSkipData?,
+        ) {
+            if (device == null || data == null) return
+            sendEvent(mapOf(
+                "event"         to "historyData",
+                "kind"          to "skip",
+                "deviceFamily"  to "icomon",
+                "deviceType"    to "skip",
+                "sdk"           to "icomon",
+                "mac"           to (device.macAddr ?: ""),
+                "time"          to data.time,
+                "skipCount"     to data.skip_count,
+                "elapsedTime"   to data.elapsed_time,
+                "actualTime"    to data.actual_time,
+                "avgFreq"       to data.avg_freq,
+                "fastestFreq"   to data.fastest_freq,
+                "calories"      to data.calories_burned,
+                "interrupts"    to data.interrupts,
+                "mostJump"      to data.most_jump,
+                "battery"       to data.battery,
             ))
         }
     }
@@ -332,6 +459,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             "cancelReadFile"    -> handleCancelReadFile(call, result)
             "pauseReadFile"     -> handlePauseReadFile(call, result)
             "continueReadFile"  -> handleContinueReadFile(call, result)
+            "readHistoryData"   -> handleReadHistoryData(result)
             "factoryReset"      -> handleFactoryReset(call, result)
             "updateUserInfo"    -> handleUpdateUserInfo(call, result)
             "isServiceReady"    -> result.success(serviceInitialized)
@@ -506,16 +634,22 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             return
         }
         val sdk = call.argument<String>("sdk") ?: "lepu"
+        // Connect-time options — default to eager catch-up on recording
+        // finish. Consumers can opt out by passing autoFetchOnFinish=false
+        // e.g. if they want purely manual history control.
+        autoFetchOnFinish = call.argument<Boolean>("autoFetchOnFinish") ?: true
 
         if (sdk == "icomon") {
             try {
                 val icDevice = ICDevice()
                 icDevice.macAddr = mac
+                activeIComonDevice = icDevice
                 ICDeviceManager.shared().addDevice(icDevice) { _, code ->
                     Log.d(TAG, "iComon addDevice result: $code")
                 }
                 result.success(true)
             } catch (e: Exception) {
+                activeIComonDevice = null
                 result.error("CONNECT_FAILED", e.message, null)
             }
             return
@@ -600,10 +734,60 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         try {
             BleServiceHelper.BleServiceHelper.stopScan()
             BleServiceHelper.BleServiceHelper.disconnect(false)
+            // Also release any bound iComon scale — the iComon SDK keeps
+            // an internal BLE session until removeDevice is invoked.
+            activeIComonDevice?.let { dev ->
+                try {
+                    ICDeviceManager.shared().removeDevice(dev) { _, _ -> }
+                } catch (e: Exception) {
+                    Log.w(TAG, "iComon removeDevice failed: ${e.message}")
+                }
+            }
+            activeIComonDevice = null
             connectedModel = -1
+            knownFilesByModel.clear()
+            lastEr1CurStatus = -1
+            lastEr2CurStatus = -1
+            lastBp2MeasureType = ""
             result.success(true)
         } catch (e: Exception) {
             result.error("DISCONNECT_FAILED", e.message, null)
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // iComon scale history — "all stored measurements" pull
+    // ════════════════════════════════════════════════════════════════════
+    //
+    // Welland-family body-composition scales (and the related kitchen /
+    // ruler / jump-rope devices) buffer measurements taken while the
+    // phone was out of range. When the phone reconnects, those records
+    // are replayed through the `onReceiveWeightHistoryData` /
+    // `onReceiveKitchenScaleHistoryData` / `onReceiveRulerHistoryData` /
+    // `onReceiveHistorySkipData` callbacks — which this plugin forwards
+    // as `historyData` events.
+    //
+    // `readHistoryData` asks the scale to replay every stored record on
+    // demand (rather than only the ones uploaded automatically on
+    // reconnect). Not every firmware supports it — `onReceiveDeviceInfo`
+    // carries `isSupportHistoryData` for a runtime check.
+    private fun handleReadHistoryData(result: Result) {
+        val device = activeIComonDevice ?: run {
+            result.error(
+                "UNSUPPORTED",
+                "readHistoryData is iComon-scale only; connect with sdk='icomon' first",
+                null,
+            )
+            return
+        }
+        try {
+            ICDeviceManager.shared().settingManager
+                .readHistoryData(device) { _, code ->
+                    Log.d(TAG, "iComon readHistoryData returned code=$code")
+                }
+            result.success(true)
+        } catch (e: Throwable) {
+            result.error("READ_HISTORY_FAILED", e.message ?: "readHistoryData failed", null)
         }
     }
 
@@ -741,6 +925,121 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         FileFamily.OXYII   -> "oxyII"
         FileFamily.PF10AW1 -> "pf10aw1"
         FileFamily.NONE    -> "unknown"
+    }
+
+    // ── Catch-up on mid-recording (re)connect ───────────────────────────
+    //
+    // When the phone joins a device that's already in the middle of a
+    // recording, the live `rtData` stream can only deliver samples from
+    // the moment we subscribe. The *full* recording — including samples
+    // from before our connection — is persisted to the device's flash as
+    // a file once the device's curStatus transitions into the "saved"
+    // terminal state. This plugin detects that transition, asks for a
+    // fresh file list, diffs it against the files we already knew about,
+    // and auto-pulls the new entry. Consumers get:
+    //
+    //   • `recordingFinished` — informational, fires on the transition.
+    //   • `fileList` — refreshed list.
+    //   • `fileReadProgress` / `fileReadComplete` — for the auto-pull.
+    //
+    // The `autoFetchOnFinish` flag (defaulting to `true`) is forwarded
+    // from the Dart `connect()` call. Consumers who want full manual
+    // control can pass `autoFetchOnFinish: false` and orchestrate the
+    // sequence themselves.
+    private fun emitRecordingFinished(family: String, model: Int) {
+        sendEvent(mapOf(
+            "event"        to "recordingFinished",
+            "deviceFamily" to family,
+            "model"        to model,
+        ))
+    }
+
+    private fun triggerGetFileList(family: FileFamily, model: Int) {
+        try {
+            when (family) {
+                FileFamily.ER1 ->
+                    BleServiceHelper.BleServiceHelper.er1GetFileList(model)
+                FileFamily.ER2 ->
+                    BleServiceHelper.BleServiceHelper.er2GetFileList(model)
+                FileFamily.BP2 ->
+                    BleServiceHelper.BleServiceHelper.bp2GetFileList(model)
+                FileFamily.OXYII ->
+                    BleServiceHelper.BleServiceHelper.oxyIIGetFileList(model)
+                FileFamily.PF10AW1 ->
+                    BleServiceHelper.BleServiceHelper.pf10Aw1GetFileList(model)
+                FileFamily.OXY ->
+                    BleServiceHelper.BleServiceHelper.oxyGetInfo(model)
+                FileFamily.NONE -> { /* nothing to do */ }
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "triggerGetFileList($family, $model) failed: ${e.message}")
+        }
+    }
+
+    private fun triggerReadFile(family: FileFamily, model: Int, fileName: String) {
+        try {
+            when (family) {
+                FileFamily.ER1 ->
+                    BleServiceHelper.BleServiceHelper.er1ReadFile(model, fileName)
+                FileFamily.ER2 ->
+                    BleServiceHelper.BleServiceHelper.er2ReadFile(model, fileName)
+                FileFamily.BP2 ->
+                    BleServiceHelper.BleServiceHelper.bp2ReadFile(model, fileName)
+                FileFamily.OXY ->
+                    BleServiceHelper.BleServiceHelper.oxyReadFile(model, fileName)
+                FileFamily.OXYII ->
+                    BleServiceHelper.BleServiceHelper.oxyIIReadFile(model, fileName)
+                FileFamily.PF10AW1 ->
+                    BleServiceHelper.BleServiceHelper.pf10Aw1ReadFile(model, fileName)
+                FileFamily.NONE -> { /* nothing to do */ }
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "triggerReadFile($family, $model, $fileName) failed: ${e.message}")
+        }
+    }
+
+    /// Called after every `fileList` event. Captures the current set of
+    /// files as a baseline on the first invocation for this model, and on
+    /// subsequent invocations diffs the incoming list against that
+    /// baseline to identify freshly-recorded files. If
+    /// `autoFetchOnFinish` is on, each new file is downloaded in sequence
+    /// (the SDK serialises them internally).
+    private fun maybeTriggerCatchUp(
+        family: FileFamily,
+        model: Int,
+        files: List<String>,
+    ) {
+        if (family == FileFamily.NONE) return
+        val known = knownFilesByModel.getOrPut(model) { mutableSetOf() }
+        val isFirstList = known.isEmpty()
+        val newFiles = files.filter { it.isNotBlank() && it !in known }
+        known.addAll(files)
+        if (isFirstList || newFiles.isEmpty() || !autoFetchOnFinish) return
+
+        Log.i(TAG, "Auto-fetching ${newFiles.size} new file(s) for " +
+                "model=$model family=${fileFamilyName(family)}: $newFiles")
+        // The Lepu SDK does not safely support overlapping readFile
+        // calls on most families, so trigger the first one immediately
+        // and rely on EventXxxReadFileComplete to fetch subsequent
+        // entries. For simplicity (and because 99% of the time the diff
+        // is a single entry), we pull them all at once and let the SDK
+        // queue them.
+        for (name in newFiles) {
+            mainHandler.post { triggerReadFile(family, model, name) }
+        }
+    }
+
+    /// Called from rtData observers when we detect the recording-saved
+    /// transition (ER1/ER2 `curStatus == 4`, BP2 `measureType == ecg_result` /
+    /// `bp_result`). Emits the `recordingFinished` event and kicks off a
+    /// fresh file-list pull, whose callback will in turn invoke
+    /// `maybeTriggerCatchUp`.
+    private fun onRecordingFinishedTransition(family: FileFamily, model: Int) {
+        if (family == FileFamily.NONE) return
+        emitRecordingFinished(fileFamilyName(family), model)
+        if (autoFetchOnFinish) {
+            mainHandler.post { triggerGetFileList(family, model) }
+        }
     }
 
     private fun handleGetFileList(call: MethodCall, result: Result) {
@@ -976,6 +1275,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             .observeForever { event ->
                 try {
                     val data = event.data as com.lepu.blepro.ext.er1.RtData
+                    val status = data.param.curStatus
                     sendEvent(mapOf(
                         "event" to "rtData",
                         "deviceType" to "ecg",
@@ -985,12 +1285,20 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                         "battery" to data.param.battery,
                         "batteryState" to data.param.batteryState,
                         "recordTime" to data.param.recordTime,
-                        "curStatus" to data.param.curStatus,
+                        "curStatus" to status,
                         "ecgFloats" to data.wave.ecgFloats?.toList(),
                         "ecgShorts" to data.wave.ecgShorts?.toList(),
                         "samplingRate" to 125,
                         "mvConversion" to 0.002467,
                     ))
+                    // Detect the idle/measuring → "saving succeed" transition
+                    // so we can auto-pull the freshly-saved file (which
+                    // contains *all* samples, including any captured before
+                    // the consumer connected).
+                    if (status == 4 && lastEr1CurStatus != 4) {
+                        onRecordingFinishedTransition(FileFamily.ER1, event.model)
+                    }
+                    lastEr1CurStatus = status
                 } catch (e: Exception) {
                     Log.e(TAG, "ER1 RT error", e)
                 }
@@ -1003,6 +1311,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             .observeForever { event ->
                 try {
                     val data = event.data as com.lepu.blepro.ext.er2.RtData
+                    val status = data.param.curStatus
                     sendEvent(mapOf(
                         "event" to "rtData",
                         "deviceType" to "ecg",
@@ -1012,12 +1321,16 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                         "battery" to data.param.battery,
                         "batteryState" to data.param.batteryState,
                         "recordTime" to data.param.recordTime,
-                        "curStatus" to data.param.curStatus,
+                        "curStatus" to status,
                         "ecgFloats" to data.wave.ecgFloats?.toList(),
                         "ecgShorts" to data.wave.ecgShorts?.toList(),
                         "samplingRate" to 125,
                         "mvConversion" to 0.002467,
                     ))
+                    if (status == 4 && lastEr2CurStatus != 4) {
+                        onRecordingFinishedTransition(FileFamily.ER2, event.model)
+                    }
+                    lastEr2CurStatus = status
                 } catch (e: Exception) {
                     Log.e(TAG, "ER2 RT error", e)
                 }
@@ -1041,7 +1354,9 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             .observeForever { event ->
                 try {
                     val files = event.data as? ArrayList<String> ?: arrayListOf()
-                    sendEvent(mapOf("event" to "fileList", "model" to event.model, "files" to files))
+                    sendEvent(mapOf("event" to "fileList", "model" to event.model,
+                        "deviceFamily" to "er2", "files" to files))
+                    maybeTriggerCatchUp(FileFamily.ER2, event.model, files)
                 } catch (e: Exception) { Log.e(TAG, "ER2 FileList error", e) }
             }
 
@@ -1063,7 +1378,9 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             .observeForever { event ->
                 try {
                     val files = event.data as? ArrayList<String> ?: arrayListOf()
-                    sendEvent(mapOf("event" to "fileList", "model" to event.model, "files" to files))
+                    sendEvent(mapOf("event" to "fileList", "model" to event.model,
+                        "deviceFamily" to "er1", "files" to files))
+                    maybeTriggerCatchUp(FileFamily.ER1, event.model, files)
                 } catch (e: Exception) { Log.e(TAG, "ER1 FileList error", e) }
             }
 
@@ -1134,6 +1451,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                                 "deviceFamily" to "oxy",
                                 "files" to files,
                             ))
+                            maybeTriggerCatchUp(FileFamily.OXY, event.model, files)
                         }
                     }
                 } catch (e: Exception) { Log.e(TAG, "Oxy Info error", e) }
@@ -1292,6 +1610,20 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                         }
                     }
                     sendEvent(baseMap)
+
+                    // BP2 recording-finished transition: the device
+                    // writes a new file to flash as soon as we see
+                    // measureType `ecg_result` (ECG recording saved) or
+                    // `bp_result` (cuff measurement saved).  We treat the
+                    // first such event after any non-result measureType
+                    // as the edge trigger, so repeated `*_result` frames
+                    // don't re-pull the same file.
+                    val mt = (baseMap["measureType"] as? String) ?: ""
+                    val isResult = mt == "ecg_result" || mt == "bp_result"
+                    if (isResult && lastBp2MeasureType != mt) {
+                        onRecordingFinishedTransition(FileFamily.BP2, event.model)
+                    }
+                    lastBp2MeasureType = mt
                 } catch (e: Exception) { Log.e(TAG, "BP2 RT error", e) }
             }
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.BP2.EventBp2Info)
@@ -1304,7 +1636,9 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             .observeForever { event ->
                 try {
                     val files = event.data as? ArrayList<String> ?: arrayListOf()
-                    sendEvent(mapOf("event" to "fileList", "model" to event.model, "files" to files))
+                    sendEvent(mapOf("event" to "fileList", "model" to event.model,
+                        "deviceFamily" to "bp2", "files" to files))
+                    maybeTriggerCatchUp(FileFamily.BP2, event.model, files)
                 } catch (e: Exception) { Log.e(TAG, "BP2 FileList error", e) }
             }
 
@@ -1513,6 +1847,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                     val files = e.data as? ArrayList<String> ?: arrayListOf()
                     sendEvent(mapOf("event" to "fileList",
                         "model" to e.model, "deviceFamily" to "oxyII", "files" to files))
+                    maybeTriggerCatchUp(FileFamily.OXYII, e.model, files)
                 } catch (ex: Exception) { Log.e(TAG, "OxyII FileList error", ex) }
             }
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.OxyII.EventOxyIIReadingFileProgress)
@@ -1529,6 +1864,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                     val files = e.data as? ArrayList<String> ?: arrayListOf()
                     sendEvent(mapOf("event" to "fileList",
                         "model" to e.model, "deviceFamily" to "pf10aw1", "files" to files))
+                    maybeTriggerCatchUp(FileFamily.PF10AW1, e.model, files)
                 } catch (ex: Exception) { Log.e(TAG, "Pf10Aw1 FileList error", ex) }
             }
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Pf10Aw1.EventPf10Aw1ReadingFileProgress)

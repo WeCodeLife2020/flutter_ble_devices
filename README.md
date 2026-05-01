@@ -252,6 +252,9 @@ Emitted on `BluetodevController.eventStream`:
 { 'event': 'fileReadComplete', 'model', 'deviceFamily', 'fileName',
                                 'size', 'content': <base64>?, 'parsed'?: {...} }
 { 'event': 'fileReadError',    'model', 'deviceFamily', 'fileName'?, 'error' }
+{ 'event': 'recordingFinished', 'model', 'deviceFamily' }
+{ 'event': 'historyData', 'kind': 'weight'|'kitchenScale'|'ruler'|'skip',
+                           'deviceFamily': 'icomon', 'mac', 'time', ...kind-specific }
 { 'event': 'battery',   'state', 'percent', 'voltage' }
 ```
 
@@ -286,16 +289,16 @@ storage and pull every record onto the phone.
 
 ### Supported families
 
-| Family       | List | Download | Pause / Resume / Cancel |
-| ---          | ---  | ---      | ---                     |
-| `bp2`        | yes  | yes      | cancel only             |
-| `er1`        | yes  | yes      | **all three** (Android) |
-| `er2`        | yes  | yes      | cancel only             |
-| `oxy`        | yes (via `getDeviceInfo`) | yes | cancel only |
-| `oxyII`      | yes  | yes (Android only — iOS lumps OxyII into `woxi`) | cancel only |
-| `pf10aw1`    | yes  | yes      | cancel only             |
-| `airbp`      | n/a  | n/a — devices have no flash storage             | n/a |
-| `icomon`     | n/a  | n/a — scales return measurements live           | n/a |
+| Family       | List | Download | Pause / Resume / Cancel | Auto-fetch on recording-finish |
+| ---          | ---  | ---      | ---                     | ---                            |
+| `bp2`        | yes  | yes      | cancel only             | yes (`ecg_result`/`bp_result`) |
+| `er1`        | yes  | yes      | **all three** (Android) | yes (`curStatus == 4`)         |
+| `er2`        | yes  | yes      | cancel only             | yes (`curStatus == 4`)         |
+| `oxy`        | yes (via `getDeviceInfo`) | yes | cancel only | via new file on list diff |
+| `oxyII`      | yes  | yes (Android only — iOS lumps OxyII into `woxi`) | cancel only | via new file on list diff |
+| `pf10aw1`    | yes  | yes      | cancel only             | via new file on list diff      |
+| `airbp`      | n/a  | n/a — devices have no flash storage             | n/a | n/a              |
+| `icomon`     | [`readHistoryData()`](#pulling-everything-stored-on-an-icomon-scale) | offline-replay via `historyData` | n/a | n/a |
 
 ### One-shot helper
 
@@ -361,6 +364,105 @@ parsing is up to you (or use the helpers below).
   `pauseReadFile()` / `continueReadFile()` map to `er1PauseReadFile`
   / `er1ContinueReadFile`. iOS returns `UNSUPPORTED`.
 
+### Mid-recording catch-up (Lepu ECG / BP devices)
+
+If the phone connects to an ER1 / ER2 / BP2 that is **already in the
+middle of a recording** — e.g. the user started the measurement
+yesterday — the live `rtData` stream can only carry samples captured
+from the moment the subscription attaches. The **full** recording —
+including every pre-connection sample — is persisted to the device's
+flash the instant the device's `curStatus` transitions into the
+"saving succeed" terminal state.
+
+The plugin detects that transition automatically and reacts as follows
+(behaviour controlled by the `autoFetchOnFinish` flag on
+[`connect()`](#connect), defaulting to `true`):
+
+1. Emits a `recordingFinished` event (observe via
+   `recordingFinishedStream`) as soon as the transition fires.
+2. Re-issues the family's file-list command.
+3. Diffs the fresh list against the baseline captured at connect time
+   and auto-pulls every new entry.
+4. Each auto-pull fires the usual `fileReadProgress` + `fileReadComplete`
+   events, giving the consumer the full recording bytes + SDK-parsed
+   fields.
+
+```dart
+await BluetodevController.connect(
+  model: device.model,
+  mac:   device.mac,
+  autoFetchOnFinish: true,                  // default
+);
+
+BluetodevController.recordingFinishedStream.listen((e) {
+  print('${e.deviceFamily} just saved a recording — pulling now…');
+});
+
+BluetodevController.fileReadCompleteStream.listen((file) {
+  // Fires for both user-initiated readFile() *and* auto-fetched files.
+  persist(file.fileName, file.content);
+});
+```
+
+**Transitions watched**
+
+- ER1 / ER2 — `curStatus == 4` ("saving succeed"), matches Lepu's SDK
+  contract verbatim ([source][LepuDemo-ER1]).
+- BP2 / BP2A / BP2T — `paramDataType == 1` (`bp_result`) or `3`
+  (`ecg_result`).
+- Oxy / OxyII / PF10AW1 — delta-detection on the file list itself, so
+  any new entry appearing during the session is auto-pulled.
+
+[LepuDemo-ER1]: https://github.com/viatom-develop/LepuDemo#er1-family
+
+### Pulling everything stored on an iComon scale
+
+iComon body-composition scales (Welland, QN-Scale, Adore, Chipsea, and
+friends) buffer every measurement taken without the phone present in
+their internal flash. Two things happen automatically on BLE
+reconnect:
+
+1. The scale replays every buffered record through its normal data
+   callbacks — the plugin forwards those as `historyData` events.
+2. The same callbacks also fire for kitchen-scale, tape-measure, and
+   jump-rope devices, with the `kind` field distinguishing payload
+   shapes (`weight` / `kitchenScale` / `ruler` / `skip`).
+
+Listen via `historyDataStream`:
+
+```dart
+await BluetodevController.connect(
+  sdk: 'icomon',
+  mac: scale.mac,
+);
+
+BluetodevController.historyDataStream.listen((e) {
+  switch (e.kind) {
+    case 'weight':
+      final ts = e.timestamp;
+      print('${ts ?? "unknown time"}: ${e.weightKg} kg'
+            ' (impedance ${e.fields["impedance"]})');
+      break;
+    case 'kitchenScale':
+      print('${e.fields["weight_g"]} g');
+      break;
+  }
+});
+
+// Re-trigger the replay explicitly (e.g. after a retry button).
+await BluetodevController.readHistoryData();
+```
+
+**Notes**
+
+- Firmware keeps roughly the most-recent **~64 records**; older ones
+  are discarded silently. There's no way to paginate beyond that.
+- `readHistoryData` is a no-op on non-iComon devices and returns
+  `UNSUPPORTED` — Lepu/Viatom devices expose their history via the
+  file-transfer pipeline instead.
+- `onReceiveDeviceInfo` on the iComon SDK carries `isSupportHistoryData`
+  for a runtime check if your specific firmware drops the feature.
+
 ### Wire format
 
 The native plugins emit four events. Wire keys are stable across
@@ -393,6 +495,22 @@ platforms; both Kotlin (`FlutterBleDevicesPlugin.kt`) and Obj-C
   "model": 19, "deviceFamily": "bp2",
   "fileName": "20240501-093015.bin",
   "error": "disconnected"
+}
+{
+  "event": "recordingFinished",
+  "model": 7, "deviceFamily": "er1"
+}
+{
+  "event": "historyData",
+  "kind": "weight",
+  "deviceFamily": "icomon",
+  "mac": "AA:BB:CC:DD:EE:FF",
+  "time": 1714557600,              // Unix seconds (0 if missing)
+  "userId": 0,
+  "weight_kg": 72.4, "weight_g": 72400,
+  "weight_lb": 159.6,
+  "precision_kg": 1, "precision_lb": 1,
+  "impedance": 487.3
 }
 ```
 

@@ -50,6 +50,10 @@ static NSString *const kAirBPRxCharUUID  = @"6E400003-B5A3-F393-E0A9-E50E24DCCA9
     #import <ICDeviceManager/ICUserInfo.h>
     #import <ICDeviceManager/ICWeightData.h>
     #import <ICDeviceManager/ICWeightCenterData.h>
+    #import <ICDeviceManager/ICWeightHistoryData.h>
+    #import <ICDeviceManager/ICKitchenScaleData.h>
+    #import <ICDeviceManager/ICRulerData.h>
+    #import <ICDeviceManager/ICSkipData.h>
     #import <ICDeviceManager/ICConstant.h>
 #else
     #define FBD_HAS_ICOMON 0
@@ -117,6 +121,23 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 @property (nonatomic, assign) NSInteger connectedModel;
 @property (nonatomic, strong) NSArray<NSNumber *> *scanModelFilter;
 @property (nonatomic, assign) BOOL scanRequested;       // scan requested while central not powered on
+
+// Mid-recording catch-up state. When the consumer connects to a device
+// that's mid-recording, the live RT stream only carries samples from
+// subscription-onward. The *full* recording is persisted to the
+// device's flash once the recording finishes; we detect that transition
+// (ER1/ER2 curStatus → "saved", BP2 paramDataType → result) and
+// auto-trigger a fresh file-list → readFile cycle.
+//
+// `knownFileNames` is the baseline set captured at connect time so the
+// auto-pull only targets genuinely-new entries. Off by default for
+// legacy callers; opt-in via connect(... autoFetchOnFinish: true ...)
+// which maps to the `autoFetchOnFinish` arg on the connect method call.
+@property (nonatomic, assign) BOOL            autoFetchOnFinish;
+@property (nonatomic, strong) NSMutableSet<NSString *> *knownFileNames;
+@property (nonatomic, assign) NSInteger       lastEr1CurStatus;
+@property (nonatomic, assign) NSInteger       lastEr2CurStatus;
+@property (nonatomic, assign) NSInteger       lastBp2ParamDataType;
 
 // Real-time polling (Android's BleServiceHelper.startRtTask drives this
 // internally; on iOS we have to poll the URAT channel ourselves for the
@@ -204,6 +225,7 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     if ([method isEqualToString:@"getFileList"])            { [self handleGetFileList:call result:result];      return; }
     if ([method isEqualToString:@"readFile"])               { [self handleReadFile:call result:result];         return; }
     if ([method isEqualToString:@"cancelReadFile"])         { [self handleCancelReadFile:call result:result];   return; }
+    if ([method isEqualToString:@"readHistoryData"])        { [self handleReadHistoryData:call result:result];  return; }
     if ([method isEqualToString:@"pauseReadFile"]
         || [method isEqualToString:@"continueReadFile"]) {
         // The URAT protocol does not expose pause/continue; advise the
@@ -343,6 +365,15 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     NSString *mac  = call.arguments[@"mac"];
     NSNumber *modelObj = call.arguments[@"model"];
     NSString *sdk  = call.arguments[@"sdk"] ?: @"lepu";
+
+    // Reset catch-up bookkeeping on every new connect so a stale baseline
+    // from a prior device never confuses the auto-pull diff.
+    NSNumber *autoBox = call.arguments[@"autoFetchOnFinish"];
+    self.autoFetchOnFinish    = (autoBox != nil) ? autoBox.boolValue : YES;
+    self.knownFileNames       = [NSMutableSet set];
+    self.lastEr1CurStatus     = -1;
+    self.lastEr2CurStatus     = -1;
+    self.lastBp2ParamDataType = -1;
 
     if ([sdk isEqualToString:@"icomon"]) {
 #if FBD_HAS_ICOMON
@@ -665,6 +696,38 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     result(@YES);
 }
 
+#pragma mark - iComon scale "read all stored history"
+
+// Welland-family scales buffer offline measurements; they replay them
+// through `onReceiveWeightHistoryData:` either automatically on BLE
+// reconnect or on demand when the consumer calls readHistoryData:.
+//
+// The settingManager singleton lives on ICDeviceManager; reaching it
+// does not require the scale to be connected but readHistoryData: does.
+- (void)handleReadHistoryData:(FlutterMethodCall *)call
+                       result:(FlutterResult)result {
+#if FBD_HAS_ICOMON
+    ICDevice *dev = self.activeIComonDevice;
+    if (dev == nil) {
+        result([FlutterError errorWithCode:@"UNSUPPORTED"
+                                   message:@"readHistoryData is iComon-scale only; connect with sdk='icomon' first"
+                                   details:nil]);
+        return;
+    }
+    [[[ICDeviceManager shared] getSettingManager]
+        readHistoryData:dev
+               callback:^(ICSettingCallBackCode code) {
+        FBD_LOG(@"iComon readHistoryData returned code=%d", (int)code);
+    }];
+    result(@YES);
+#else
+    (void)call;
+    result([FlutterError errorWithCode:@"UNSUPPORTED"
+                               message:@"iComon scale support is not compiled in."
+                               details:nil]);
+#endif
+}
+
 #pragma mark - File transfer (history download)
 
 // File-transfer family classification — pulls the exact `family` string
@@ -673,6 +736,73 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 - (NSString *)fileFamilyForActiveMapping {
     NSString *family = self.activeMapping.family;
     return family.length ? family : @"unknown";
+}
+
+// ── Mid-recording catch-up ──────────────────────────────────────────
+//
+// See the header-level comment on `autoFetchOnFinish` for the wire
+// semantics. On iOS the transition detection lives in the URAT rtData
+// dispatch path for ER1/ER2 and in the BP2 `paramDataType` handler; the
+// file-list diff logic is identical to Android.
+
+- (void)emitRecordingFinishedForFamily:(NSString *)family {
+    if (family.length == 0) family = [self fileFamilyForActiveMapping];
+    [self sendEvent:@{@"event":        @"recordingFinished",
+                      @"deviceFamily": family,
+                      @"model":        @(self.connectedModel)}];
+}
+
+/// Ask the device for a fresh file list — the corresponding fileList
+/// event will in turn trigger `applyFileListForCatchUp:` below. On the
+/// legacy O2 path the file list is embedded in `getInfo` so we re-issue
+/// that; on URAT families a dedicated `requestFilelist` exists.
+- (void)triggerGetFileListForCatchUp {
+    VTMDeviceMapping *m = self.activeMapping;
+    if (m.protocolPath == VTMProtocolPathURAT && self.uratUtil) {
+        [self.uratUtil requestFilelist];
+    } else if (m.protocolPath == VTMProtocolPathO2Legacy && self.o2Util) {
+        [self.o2Util beginGetInfo];
+    }
+}
+
+/// Diff a freshly-received file list against `knownFileNames` and
+/// auto-pull any new entries (when `autoFetchOnFinish` is enabled).
+/// The first list we see on a connection becomes the baseline so that
+/// pre-existing recordings don't get mass-downloaded unexpectedly.
+- (void)applyFileListForCatchUp:(NSArray<NSString *> *)files {
+    if (files.count == 0) return;
+    BOOL isFirstList = (self.knownFileNames.count == 0);
+    NSMutableArray<NSString *> *newOnes = [NSMutableArray array];
+    for (NSString *name in files) {
+        if (name.length == 0) continue;
+        if (![self.knownFileNames containsObject:name]) {
+            [newOnes addObject:name];
+        }
+    }
+    [self.knownFileNames addObjectsFromArray:files];
+    if (isFirstList || !self.autoFetchOnFinish || newOnes.count == 0) return;
+
+    FBD_LOG(@"auto-fetching %lu new file(s): %@",
+            (unsigned long)newOnes.count, newOnes);
+    VTMDeviceMapping *m = self.activeMapping;
+    // The URAT state machine only supports one in-flight transfer at a
+    // time; kick off the first and let the client call readFile() for
+    // subsequent entries on the fileReadComplete event. In practice the
+    // diff is almost always a single file (the one just saved).
+    for (NSString *name in newOnes) {
+        if (self.pendingReadFileName != nil) break;
+        if (m.protocolPath == VTMProtocolPathURAT) {
+            self.pendingReadFileName  = name;
+            self.pendingReadBuffer    = [NSMutableData data];
+            self.pendingReadTotalSize = 0;
+            [self.uratUtil prepareReadFile:name];
+        } else if (m.protocolPath == VTMProtocolPathO2Legacy) {
+            self.pendingReadFileName  = name;
+            self.pendingReadBuffer    = nil;
+            self.pendingReadTotalSize = 0;
+            [self.o2Util beginReadFileWithFileName:name];
+        }
+    }
 }
 
 - (void)handleReadFile:(FlutterMethodCall *)call result:(FlutterResult)result {
@@ -1055,9 +1185,11 @@ commandCompletion:(u_char)cmdType
             if (fn.length) [files addObject:[fn stringByTrimmingCharactersInSet:
                                              [NSCharacterSet controlCharacterSet]]];
         }
-        [self sendEvent:@{@"event": @"fileList",
-                          @"model": @(self.connectedModel),
-                          @"files": files}];
+        [self sendEvent:@{@"event":        @"fileList",
+                          @"model":        @(self.connectedModel),
+                          @"deviceFamily": [self fileFamilyForActiveMapping],
+                          @"files":        files}];
+        [self applyFileListForCatchUp:files];
         return;
     }
     if (cmdType == VTMBLECmdSyncTime) {
@@ -1107,9 +1239,10 @@ commandCompletion:(u_char)cmdType
             [raw addObject:@(s)];
             [mv  addObject:@([VTMBLEParser mVFromShort:s])];
         }
+        NSString *family = self.activeMapping.family ?: @"er1";
         [self sendEvent:@{@"event": @"rtData",
                           @"deviceType": @"ecg",
-                          @"deviceFamily": self.activeMapping.family ?: @"er1",
+                          @"deviceFamily": family,
                           @"model": @(self.connectedModel),
                           @"hr": @(rt.run_para.hr),
                           @"battery": @(rt.run_para.percent),
@@ -1121,6 +1254,22 @@ commandCompletion:(u_char)cmdType
                           @"ecgShorts": raw,
                           @"samplingRate": @125,
                           @"mvConversion": @0.002467}];
+        // Detect the idle/measuring → "saving succeed" transition
+        // (curStatus == 4) on ER1/ER2 and kick off the auto-pull so the
+        // full file — including pre-connection samples — is downloaded.
+        NSInteger cur = (NSInteger)st.curStatus;
+        BOOL isEr1 = [family isEqualToString:@"er1"];
+        BOOL isEr2 = [family isEqualToString:@"er2"];
+        NSInteger last = isEr1 ? self.lastEr1CurStatus
+                                : (isEr2 ? self.lastEr2CurStatus : -1);
+        if (cur == 4 && last != 4 && (isEr1 || isEr2)) {
+            [self emitRecordingFinishedForFamily:family];
+            if (self.autoFetchOnFinish) {
+                [self triggerGetFileListForCatchUp];
+            }
+        }
+        if (isEr1) self.lastEr1CurStatus = cur;
+        if (isEr2) self.lastEr2CurStatus = cur;
         return;
     }
     if (cmdType == VTMECGCmdGetRealWave) {
@@ -1218,6 +1367,19 @@ commandCompletion:(u_char)cmdType
                 break;
         }
         [self sendEvent:d];
+        // BP2 recording-finished edge trigger: paramDataType transitions
+        // *to* 1 (bp_result) or 3 (ecg_result) mean a new file has just
+        // been written to flash. We only fire on the edge so a streak of
+        // result frames doesn't re-pull the same file.
+        NSInteger ptype = (NSInteger)rt.rt_wav.type;
+        BOOL isResult = (ptype == 1) || (ptype == 3);
+        if (isResult && self.lastBp2ParamDataType != ptype) {
+            [self emitRecordingFinishedForFamily:family];
+            if (self.autoFetchOnFinish) {
+                [self triggerGetFileListForCatchUp];
+            }
+        }
+        self.lastBp2ParamDataType = ptype;
         return;
     }
 
@@ -1724,6 +1886,85 @@ commandCompletion:(u_char)cmdType
 
 - (void)onReceiveWeightData:(ICDevice *)device data:(ICWeightData *)data {
     [self emitIComonWeight:data device:device];
+}
+
+// ── iComon offline-history replay callbacks ─────────────────────────
+//
+// These fire both automatically (when the phone reconnects to a scale
+// that has cached measurements) and on demand in response to
+// `-handleReadHistoryData:`. The wire format mirrors the Android side
+// so Dart consumers receive identical `historyData` events regardless
+// of platform.
+
+- (void)onReceiveWeightHistoryData:(ICDevice *)device
+                              data:(ICWeightHistoryData *)data {
+    if (device == nil || data == nil) return;
+    [self sendEvent:@{@"event":         @"historyData",
+                      @"kind":          @"weight",
+                      @"deviceFamily":  @"icomon",
+                      @"deviceType":    @"scale",
+                      @"sdk":           @"icomon",
+                      @"mac":           device.macAddr ?: @"",
+                      @"userId":        @(data.userId),
+                      @"time":          @(data.time),
+                      @"weight_kg":     @(data.weight_kg),
+                      @"weight_g":      @(data.weight_g),
+                      @"weight_lb":     @(data.weight_lb),
+                      @"weight_st":     @(data.weight_st),
+                      @"weight_st_lb":  @(data.weight_st_lb),
+                      @"precision_kg":  @(data.precision_kg),
+                      @"precision_lb":  @(data.precision_lb),
+                      @"impedance":     @(data.imp)}];
+}
+
+- (void)onReceiveKitchenScaleHistoryData:(ICDevice *)device
+                                   datas:(NSArray<ICKitchenScaleData *> *)datas {
+    if (device == nil || datas.count == 0) return;
+    for (ICKitchenScaleData *entry in datas) {
+        [self sendEvent:@{@"event":        @"historyData",
+                          @"kind":         @"kitchenScale",
+                          @"deviceFamily": @"icomon",
+                          @"deviceType":   @"scale",
+                          @"sdk":          @"icomon",
+                          @"mac":          device.macAddr ?: @"",
+                          @"time":         @(entry.time),
+                          @"weight_g":     @(entry.value_g),
+                          @"isStabilized": @(entry.isStabilized)}];
+    }
+}
+
+- (void)onReceiveRulerHistoryData:(ICDevice *)device
+                             data:(ICRulerData *)data {
+    if (device == nil || data == nil) return;
+    [self sendEvent:@{@"event":        @"historyData",
+                      @"kind":         @"ruler",
+                      @"deviceFamily": @"icomon",
+                      @"deviceType":   @"ruler",
+                      @"sdk":          @"icomon",
+                      @"mac":          device.macAddr ?: @"",
+                      @"time":         @(data.time),
+                      @"distance_cm":  @(data.distance_cm),
+                      @"distance_in":  @(data.distance_in),
+                      @"distance_ft":  @(data.distance_ft),
+                      @"isStabilized": @(data.isStabilized)}];
+}
+
+- (void)onReceiveHistorySkipData:(ICDevice *)device
+                            data:(ICSkipData *)data {
+    if (device == nil || data == nil) return;
+    [self sendEvent:@{@"event":        @"historyData",
+                      @"kind":         @"skip",
+                      @"deviceFamily": @"icomon",
+                      @"deviceType":   @"skip",
+                      @"sdk":          @"icomon",
+                      @"mac":          device.macAddr ?: @"",
+                      @"time":         @(data.time),
+                      @"skipCount":    @(data.skip_count),
+                      @"elapsedTime":  @(data.elapsed_time),
+                      @"actualTime":   @(data.actual_time),
+                      @"avgFreq":      @(data.avg_freq),
+                      @"calories":     @(data.calories_burned),
+                      @"battery":      @(data.battery)}];
 }
 
 - (void)onReceiveMeasureStepData:(ICDevice *)device step:(ICMeasureStep)step data:(NSObject *)data {

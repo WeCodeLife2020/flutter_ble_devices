@@ -110,6 +110,26 @@ class BluetodevController {
       .where((e) => e['event'] == 'fileReadError')
       .map((e) => FileReadErrorEvent.fromMap(e));
 
+  /// Emitted the moment a Lepu device reports a recording has just been
+  /// saved to flash. See [RecordingFinishedEvent] for semantics.
+  ///
+  /// With `autoFetchOnFinish: true` (the default) the plugin will
+  /// immediately issue the resulting `readFile` so you usually only need
+  /// [fileReadCompleteStream]; subscribe here if you want to know
+  /// *before* the download begins (e.g. to show a spinner).
+  static Stream<RecordingFinishedEvent> get recordingFinishedStream =>
+      eventStream
+          .where((e) => e['event'] == 'recordingFinished')
+          .map((e) => RecordingFinishedEvent.fromMap(e));
+
+  /// Offline measurements replayed by iComon scales (body-composition,
+  /// kitchen scale, tape measure, or jump rope) — either automatically
+  /// right after BLE reconnection, or on demand in response to
+  /// [readHistoryData].
+  static Stream<HistoryDataEvent> get historyDataStream => eventStream
+      .where((e) => e['event'] == 'historyData')
+      .map((e) => HistoryDataEvent.fromMap(e));
+
   // ════════════════════════════════════════════════════════════════════
   // Permissions
   // ════════════════════════════════════════════════════════════════════
@@ -186,15 +206,24 @@ class BluetodevController {
   /// For Lepu devices, [model] is required.
   /// For iComon devices, pass [sdk] = 'icomon'.
   /// The device must first be discovered via [scan].
+  ///
+  /// When [autoFetchOnFinish] is `true` (the default), the native layer
+  /// watches for the "recording saved" transition on Lepu ER1/ER2/BP2
+  /// devices and automatically pulls the resulting file. This gives the
+  /// consumer the **full** recording — including samples captured before
+  /// the phone connected — as a [FileReadCompleteEvent]. Set to `false`
+  /// if you want to orchestrate the download yourself.
   static Future<bool> connect({
     int? model,
     required String mac,
     String sdk = 'lepu',
+    bool autoFetchOnFinish = true,
   }) async {
     final result = await _method.invokeMethod<bool>('connect', {
       'model': ?model,
       'mac': mac,
       'sdk': sdk,
+      'autoFetchOnFinish': autoFetchOnFinish,
     });
     return result ?? false;
   }
@@ -387,6 +416,27 @@ class BluetodevController {
       }
       yield result as FileReadCompleteEvent;
     }
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // iComon-scale offline history
+  // ════════════════════════════════════════════════════════════════════
+
+  /// Ask a connected iComon scale (body-composition, kitchen, tape
+  /// measure, or jump rope) to replay every measurement it has cached
+  /// on internal flash. Each record arrives as a [HistoryDataEvent] on
+  /// [historyDataStream].
+  ///
+  /// In practice the scale also auto-uploads the same records
+  /// immediately after a BLE reconnect; this method exists so a
+  /// consumer can re-trigger the pull explicitly (e.g. after toggling
+  /// airplane mode or if the auto-upload was missed).
+  ///
+  /// Returns `UNSUPPORTED` for Lepu / Viatom devices — they expose
+  /// per-file downloads via [readFile] instead.
+  static Future<bool> readHistoryData() async {
+    final result = await _method.invokeMethod<bool>('readHistoryData');
+    return result ?? false;
   }
 
   /// Factory reset the connected device.

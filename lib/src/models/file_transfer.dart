@@ -37,12 +37,12 @@ class FileListEvent {
   });
 
   factory FileListEvent.fromMap(Map<String, dynamic> m) => FileListEvent(
-        model: (m['model'] as num?)?.toInt() ?? -1,
-        deviceFamily: m['deviceFamily'] as String?,
-        files: ((m['files'] as List?) ?? const [])
-            .whereType<String>()
-            .toList(growable: false),
-      );
+    model: (m['model'] as num?)?.toInt() ?? -1,
+    deviceFamily: m['deviceFamily'] as String?,
+    files: ((m['files'] as List?) ?? const []).whereType<String>().toList(
+      growable: false,
+    ),
+  );
 
   @override
   String toString() =>
@@ -75,7 +75,8 @@ class FileReadProgressEvent {
       );
 
   @override
-  String toString() => 'FileReadProgress($deviceFamily $fileName '
+  String toString() =>
+      'FileReadProgress($deviceFamily $fileName '
       '${(progress * 100).toStringAsFixed(1)}%)';
 }
 
@@ -144,8 +145,7 @@ class FileReadCompleteEvent {
   int get size => content.length;
 
   @override
-  String toString() =>
-      'FileReadComplete($deviceFamily $fileName $size bytes)';
+  String toString() => 'FileReadComplete($deviceFamily $fileName $size bytes)';
 }
 
 /// Emitted on a download failure or cancellation.
@@ -172,4 +172,101 @@ class FileReadErrorEvent {
 
   @override
   String toString() => 'FileReadError($deviceFamily $fileName: $error)';
+}
+
+/// Informational event emitted the moment a Lepu device reports a
+/// recording has just been saved to flash (ER1/ER2 `curStatus → 4`,
+/// BP2 `paramDataType → *_result`). Consumers who turn
+/// `autoFetchOnFinish` off in [BluetodevController.connect] use this to
+/// drive their own fetch cycle; with `autoFetchOnFinish` on the plugin
+/// pulls the resulting file automatically and the client only needs
+/// [BluetodevController.fileReadCompleteStream].
+class RecordingFinishedEvent {
+  final int model;
+  final String deviceFamily;
+
+  const RecordingFinishedEvent({
+    required this.model,
+    required this.deviceFamily,
+  });
+
+  factory RecordingFinishedEvent.fromMap(Map<String, dynamic> m) =>
+      RecordingFinishedEvent(
+        model: (m['model'] as num?)?.toInt() ?? -1,
+        deviceFamily: (m['deviceFamily'] as String?) ?? 'unknown',
+      );
+
+  @override
+  String toString() => 'RecordingFinished($deviceFamily model=$model)';
+}
+
+/// A single historical record fetched from an iComon device.  Offline
+/// measurements (taken while the phone was disconnected) are replayed
+/// as these events either automatically on reconnect, or on demand via
+/// [BluetodevController.readHistoryData].
+///
+/// The concrete shape depends on [kind]:
+///
+/// * `weight`       — `weight_kg`, `weight_g`, `weight_lb`, `weight_st`,
+///                    `weight_st_lb`, `precision_kg`, `precision_lb`,
+///                    `impedance`, `userId`, `time` (Unix seconds)
+/// * `kitchenScale` — `weight_g`, `isStabilized`, `time`
+/// * `ruler`        — `distance_cm`, `distance_in`, `distance_ft`,
+///                    `isStabilized`, `time`
+/// * `skip`         — `skipCount`, `elapsedTime`, `actualTime`,
+///                    `avgFreq`, `calories`, `battery`, `time`
+///                    (plus `fastestFreq`, `interrupts`, `mostJump` on
+///                    Android)
+class HistoryDataEvent {
+  /// One of `weight`, `kitchenScale`, `ruler`, `skip`.
+  final String kind;
+
+  /// Always `"icomon"` for now — the only platform with offline-history
+  /// support in this plugin.  Future BP2 / oximeter add-ons could extend
+  /// this with more values.
+  final String deviceFamily;
+
+  /// MAC address of the source device.
+  final String mac;
+
+  /// Unix timestamp (seconds), or `null` if the device didn't attach a
+  /// timestamp to this record.
+  final int? time;
+
+  /// Full raw payload (every field the native side emitted, minus the
+  /// event/kind/deviceFamily/mac/time keys extracted above).  Consumers
+  /// that need the typed fields should read them directly from here —
+  /// the keys are documented above per-kind.
+  final Map<String, dynamic> fields;
+
+  const HistoryDataEvent({
+    required this.kind,
+    required this.deviceFamily,
+    required this.mac,
+    required this.fields,
+    this.time,
+  });
+
+  factory HistoryDataEvent.fromMap(Map<String, dynamic> m) {
+    final time = (m['time'] as num?)?.toInt();
+    return HistoryDataEvent(
+      kind: (m['kind'] as String?) ?? 'unknown',
+      deviceFamily: (m['deviceFamily'] as String?) ?? 'icomon',
+      mac: (m['mac'] as String?) ?? '',
+      time: (time == null || time == 0) ? null : time,
+      fields: Map<String, dynamic>.from(m),
+    );
+  }
+
+  /// Convenience — returns [time] as a `DateTime` in local time, or
+  /// `null` if the record was missing a timestamp.
+  DateTime? get timestamp =>
+      time == null ? null : DateTime.fromMillisecondsSinceEpoch(time! * 1000);
+
+  /// Shorthand for weight records.
+  double? get weightKg => (fields['weight_kg'] as num?)?.toDouble();
+
+  @override
+  String toString() =>
+      'HistoryDataEvent($kind $deviceFamily mac=$mac time=$time)';
 }
