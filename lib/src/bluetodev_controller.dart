@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'models/device_info.dart';
+import 'models/file_transfer.dart';
 import 'models/measurement_event.dart';
 
 /// Main controller for Viatom/Lepu BLE medical devices.
@@ -77,9 +78,37 @@ class BluetodevController {
   static Stream<Map<String, dynamic>> get deviceInfoStream =>
       eventStream.where((e) => e['event'] == 'deviceInfo');
 
-  /// Stream of file list responses.
+  /// Raw stream of file-list responses (untyped map; for back-compat).
   static Stream<Map<String, dynamic>> get fileListStream =>
       eventStream.where((e) => e['event'] == 'fileList');
+
+  /// Typed stream of [FileListEvent]s — emitted in response to
+  /// [getFileList] when the device returns the list of stored records.
+  static Stream<FileListEvent> get fileListEventStream => eventStream
+      .where((e) => e['event'] == 'fileList')
+      .map((e) => FileListEvent.fromMap(e));
+
+  /// Per-chunk progress events during a [readFile] download.
+  ///
+  /// Progress is reported as a `0..1` fraction.  Several events are
+  /// typically emitted per file (one per BLE chunk on iOS; a few
+  /// percentage-step updates per file on Android).
+  static Stream<FileReadProgressEvent> get fileReadProgressStream => eventStream
+      .where((e) => e['event'] == 'fileReadProgress')
+      .map((e) => FileReadProgressEvent.fromMap(e));
+
+  /// Final event of a successful [readFile] call — carries the full
+  /// decoded file bytes plus an optional `parsed` map of family-specific
+  /// fields the SDK has already extracted.
+  static Stream<FileReadCompleteEvent> get fileReadCompleteStream => eventStream
+      .where((e) => e['event'] == 'fileReadComplete')
+      .map((e) => FileReadCompleteEvent.fromMap(e));
+
+  /// Emitted when a file download fails or is cancelled (e.g. on
+  /// disconnect, CRC mismatch, vendor SDK error).
+  static Stream<FileReadErrorEvent> get fileReadErrorStream => eventStream
+      .where((e) => e['event'] == 'fileReadError')
+      .map((e) => FileReadErrorEvent.fromMap(e));
 
   // ════════════════════════════════════════════════════════════════════
   // Permissions
@@ -232,11 +261,132 @@ class BluetodevController {
   }
 
   /// Request the file list from the connected device.
+  ///
+  /// Listen on [fileListEventStream] (or the legacy [fileListStream]) for
+  /// the response.  Supported on every family that has on-device storage
+  /// (BP2, ER1/ER2, Oxy, OxyII, PF10AW1).  Returns `UNSUPPORTED` for
+  /// iComon scales and AirBP devices (which have no flash to enumerate).
   static Future<bool> getFileList({int? model}) async {
     final result = await _method.invokeMethod<bool>('getFileList', {
       'model': ?model,
     });
     return result ?? false;
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // File transfer (history download)
+  // ════════════════════════════════════════════════════════════════════
+
+  /// Begin downloading a single file by [fileName] from the connected
+  /// device.  Returns immediately — observe [fileReadProgressStream],
+  /// [fileReadCompleteStream], and [fileReadErrorStream] for results.
+  ///
+  /// Typical flow:
+  /// ```dart
+  /// final list = await BluetodevController.fileListEventStream.first;
+  /// for (final name in list.files) {
+  ///   await BluetodevController.readFile(fileName: name);
+  ///   final done = await BluetodevController.fileReadCompleteStream.first;
+  ///   await persist(done.fileName, done.content);
+  /// }
+  /// ```
+  ///
+  /// Only one read can be in flight at a time on iOS — calling [readFile]
+  /// again before [fileReadCompleteStream] (or [fileReadErrorStream])
+  /// fires returns a `BUSY` MethodChannel error.  Android can in
+  /// principle multiplex but the Lepu SDK serialises requests internally,
+  /// so the same one-at-a-time discipline is recommended.
+  static Future<bool> readFile({int? model, required String fileName}) async {
+    final result = await _method.invokeMethod<bool>('readFile', {
+      'model': ?model,
+      'fileName': fileName,
+    });
+    return result ?? false;
+  }
+
+  /// Cancel an in-flight [readFile] download.
+  ///
+  /// Only the ER1 family natively supports mid-download cancellation; for
+  /// every other family [cancelReadFile] either ends the URAT session
+  /// (iOS) or returns `UNSUPPORTED` (Android non-ER1).  In both cases
+  /// disconnecting via [disconnect] is a guaranteed-clean way to stop a
+  /// download, at the cost of having to reconnect afterwards.
+  static Future<bool> cancelReadFile({int? model}) async {
+    final result = await _method.invokeMethod<bool>('cancelReadFile', {
+      'model': ?model,
+    });
+    return result ?? false;
+  }
+
+  /// Pause an in-flight ER1 file download (ER1 family only).
+  ///
+  /// Returns `UNSUPPORTED` on every other family and on iOS.
+  static Future<bool> pauseReadFile({int? model}) async {
+    final result = await _method.invokeMethod<bool>('pauseReadFile', {
+      'model': ?model,
+    });
+    return result ?? false;
+  }
+
+  /// Resume a paused ER1 file download (ER1 family only).
+  ///
+  /// Returns `UNSUPPORTED` on every other family and on iOS.
+  static Future<bool> continueReadFile({int? model}) async {
+    final result = await _method.invokeMethod<bool>('continueReadFile', {
+      'model': ?model,
+    });
+    return result ?? false;
+  }
+
+  /// Convenience helper that drives [getFileList] and downloads every
+  /// listed file sequentially.  Yields one [FileReadCompleteEvent] per
+  /// successful download, and stops on the first
+  /// [FileReadErrorEvent] (which the caller can `await`-catch).
+  ///
+  /// ```dart
+  /// await for (final file in BluetodevController.downloadAllFiles()) {
+  ///   await persist(file.fileName, file.content);
+  /// }
+  /// ```
+  ///
+  /// The default per-file timeout is 60 s; pass [perFileTimeout] to
+  /// override (e.g. for very long oximetry recordings).
+  static Stream<FileReadCompleteEvent> downloadAllFiles({
+    int? model,
+    Duration perFileTimeout = const Duration(seconds: 60),
+  }) async* {
+    // Kick off the listing first so we have a list to iterate over.
+    final listFuture = fileListEventStream.first.timeout(
+      const Duration(seconds: 10),
+    );
+    final ok = await getFileList(model: model);
+    if (!ok) {
+      throw StateError('getFileList returned false');
+    }
+    final list = await listFuture;
+    if (list.files.isEmpty) return;
+
+    for (final name in list.files) {
+      // Keep listening for the next complete/error before we issue the
+      // download — first() must be subscribed before the native side
+      // has a chance to emit.
+      final completeF = fileReadCompleteStream
+          .firstWhere((e) => e.fileName == name)
+          .timeout(perFileTimeout);
+      final errorF = fileReadErrorStream
+          .firstWhere((e) => e.fileName == null || e.fileName == name)
+          .timeout(perFileTimeout);
+
+      final started = await readFile(model: model, fileName: name);
+      if (!started) continue;
+
+      // Race the two futures — whichever fires first wins.
+      final result = await Future.any<dynamic>([completeF, errorF]);
+      if (result is FileReadErrorEvent) {
+        throw StateError('Download of $name failed: ${result.error}');
+      }
+      yield result as FileReadCompleteEvent;
+    }
   }
 
   /// Factory reset the connected device.

@@ -328,6 +328,10 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             "stopMeasurement"   -> handleStopMeasurement(call, result)
             "getDeviceInfo"     -> handleGetDeviceInfo(call, result)
             "getFileList"       -> handleGetFileList(call, result)
+            "readFile"          -> handleReadFile(call, result)
+            "cancelReadFile"    -> handleCancelReadFile(call, result)
+            "pauseReadFile"     -> handlePauseReadFile(call, result)
+            "continueReadFile"  -> handleContinueReadFile(call, result)
             "factoryReset"      -> handleFactoryReset(call, result)
             "updateUserInfo"    -> handleUpdateUserInfo(call, result)
             "isServiceReady"    -> result.success(serviceInitialized)
@@ -674,29 +678,199 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         }
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    // File transfer (history download)
+    //
+    // Each Lepu device family stores measurement records on its on-board
+    // flash. The on-device protocol exposes:
+    //
+    //   1.  GET_FILE_LIST → returns ArrayList<String> of file names.
+    //   2.  READ_FILE     → starts a chunked download of one file.
+    //   3.  Per-chunk progress reports (0..100 percent).
+    //   4.  COMPLETE      → parsed file struct (Bp2File / Er1File / OxyFile…)
+    //   5.  ERROR         → failure reason.
+    //
+    // The helper below classifies a `model` int into a "file-transfer family"
+    // string. Each handler dispatches to the correct BleServiceHelper.xxxYyy
+    // method; the LiveEventBus subscriptions further down forward the events
+    // back to Dart with a stable wire-format.
+    // ════════════════════════════════════════════════════════════════════
+
+    private enum class FileFamily { ER1, ER2, BP2, OXY, OXYII, PF10AW1, NONE }
+
+    private fun fileFamilyForModel(model: Int): FileFamily = when (model) {
+        Bluetooth.MODEL_ER1, Bluetooth.MODEL_ER1_N, Bluetooth.MODEL_HHM1,
+        Bluetooth.MODEL_ER1S, Bluetooth.MODEL_ER1_S, Bluetooth.MODEL_ER1_H,
+        Bluetooth.MODEL_ER1_W, Bluetooth.MODEL_ER1_L -> FileFamily.ER1
+
+        Bluetooth.MODEL_ER2, Bluetooth.MODEL_LP_ER2, Bluetooth.MODEL_DUOEK,
+        Bluetooth.MODEL_LEPU_ER2, Bluetooth.MODEL_HHM2, Bluetooth.MODEL_HHM3,
+        Bluetooth.MODEL_ER2_S -> FileFamily.ER2
+
+        Bluetooth.MODEL_BP2, Bluetooth.MODEL_BP2A, Bluetooth.MODEL_BP2T ->
+            FileFamily.BP2
+
+        // Legacy O2Ring / O2M family — file list is bundled into oxyGetInfo's
+        // DeviceInfo response (see EventOxyInfo handler below). Reading uses
+        // oxyReadFile / EventOxyReadingFileProgress / EventOxyReadFileComplete.
+        Bluetooth.MODEL_O2RING, Bluetooth.MODEL_O2M, Bluetooth.MODEL_BABYO2,
+        Bluetooth.MODEL_BABYO2N, Bluetooth.MODEL_CHECKO2, Bluetooth.MODEL_SLEEPO2,
+        Bluetooth.MODEL_SNOREO2, Bluetooth.MODEL_WEARO2, Bluetooth.MODEL_SLEEPU,
+        Bluetooth.MODEL_OXYLINK, Bluetooth.MODEL_KIDSO2, Bluetooth.MODEL_OXYFIT,
+        Bluetooth.MODEL_OXYRING, Bluetooth.MODEL_BBSM_S1, Bluetooth.MODEL_BBSM_S2,
+        Bluetooth.MODEL_OXYU, Bluetooth.MODEL_AI_S100 -> FileFamily.OXY
+
+        // OxyII protocol — the "WPS" / refreshed O2Ring family.
+        Bluetooth.MODEL_O2M_WPS, Bluetooth.MODEL_OXYFIT_WPS,
+        Bluetooth.MODEL_KIDSO2_WPS, Bluetooth.MODEL_BBSM_S3,
+        Bluetooth.MODEL_O2RING_RE, Bluetooth.MODEL_O2RINGF,
+        Bluetooth.MODEL_CMRING -> FileFamily.OXYII
+
+        Bluetooth.MODEL_PF_10AW_1, Bluetooth.MODEL_PF_10BWS,
+        Bluetooth.MODEL_SA10AW_PU, Bluetooth.MODEL_PF10BW_VE ->
+            FileFamily.PF10AW1
+
+        else -> FileFamily.NONE
+    }
+
+    private fun fileFamilyName(f: FileFamily): String = when (f) {
+        FileFamily.ER1     -> "er1"
+        FileFamily.ER2     -> "er2"
+        FileFamily.BP2     -> "bp2"
+        FileFamily.OXY     -> "oxy"
+        FileFamily.OXYII   -> "oxyII"
+        FileFamily.PF10AW1 -> "pf10aw1"
+        FileFamily.NONE    -> "unknown"
+    }
+
     private fun handleGetFileList(call: MethodCall, result: Result) {
         val model = call.argument<Int>("model") ?: connectedModel
         if (model < 0) { result.error("NOT_CONNECTED", "No device connected", null); return }
         try {
-            when (model) {
-                Bluetooth.MODEL_ER1, Bluetooth.MODEL_ER1_N, Bluetooth.MODEL_HHM1,
-                Bluetooth.MODEL_ER1S, Bluetooth.MODEL_ER1_S, Bluetooth.MODEL_ER1_H,
-                Bluetooth.MODEL_ER1_W, Bluetooth.MODEL_ER1_L ->
+            when (fileFamilyForModel(model)) {
+                FileFamily.ER1 ->
                     BleServiceHelper.BleServiceHelper.er1GetFileList(model)
-                Bluetooth.MODEL_ER2, Bluetooth.MODEL_LP_ER2, Bluetooth.MODEL_DUOEK,
-                Bluetooth.MODEL_LEPU_ER2, Bluetooth.MODEL_HHM2, Bluetooth.MODEL_HHM3,
-                Bluetooth.MODEL_ER2_S ->
+                FileFamily.ER2 ->
                     BleServiceHelper.BleServiceHelper.er2GetFileList(model)
-                Bluetooth.MODEL_BP2, Bluetooth.MODEL_BP2A, Bluetooth.MODEL_BP2T ->
+                FileFamily.BP2 ->
                     BleServiceHelper.BleServiceHelper.bp2GetFileList(model)
-                Bluetooth.MODEL_PF_10AW_1, Bluetooth.MODEL_PF_10BWS,
-                Bluetooth.MODEL_SA10AW_PU, Bluetooth.MODEL_PF10BW_VE ->
+                FileFamily.OXYII ->
+                    BleServiceHelper.BleServiceHelper.oxyIIGetFileList(model)
+                FileFamily.PF10AW1 ->
                     BleServiceHelper.BleServiceHelper.pf10Aw1GetFileList(model)
-                else -> {}
+                FileFamily.OXY -> {
+                    // Legacy O2Ring path: the Lepu SDK does not expose a
+                    // dedicated file-list command. The file list piggy-backs
+                    // on the device-info response, so we re-trigger that and
+                    // emit a `fileList` event from the EventOxyInfo handler.
+                    BleServiceHelper.BleServiceHelper.oxyGetInfo(model)
+                }
+                FileFamily.NONE -> {
+                    result.error("UNSUPPORTED",
+                        "Model $model does not expose a file list API",
+                        null)
+                    return
+                }
             }
             result.success(true)
         } catch (e: Exception) {
             result.error("GET_FILE_LIST_FAILED", e.message, null)
+        }
+    }
+
+    private fun handleReadFile(call: MethodCall, result: Result) {
+        val model = call.argument<Int>("model") ?: connectedModel
+        val fileName = call.argument<String>("fileName")
+        if (model < 0) { result.error("NOT_CONNECTED", "No device connected", null); return }
+        if (fileName.isNullOrEmpty()) {
+            result.error("BAD_ARG", "fileName is required", null); return
+        }
+        try {
+            when (fileFamilyForModel(model)) {
+                FileFamily.ER1 ->
+                    BleServiceHelper.BleServiceHelper.er1ReadFile(model, fileName)
+                FileFamily.ER2 ->
+                    BleServiceHelper.BleServiceHelper.er2ReadFile(model, fileName)
+                FileFamily.BP2 ->
+                    BleServiceHelper.BleServiceHelper.bp2ReadFile(model, fileName)
+                FileFamily.OXY ->
+                    BleServiceHelper.BleServiceHelper.oxyReadFile(model, fileName)
+                FileFamily.OXYII ->
+                    BleServiceHelper.BleServiceHelper.oxyIIReadFile(model, fileName)
+                FileFamily.PF10AW1 ->
+                    BleServiceHelper.BleServiceHelper.pf10Aw1ReadFile(model, fileName)
+                FileFamily.NONE -> {
+                    result.error("UNSUPPORTED",
+                        "Model $model does not support file download",
+                        null)
+                    return
+                }
+            }
+            result.success(true)
+        } catch (e: Exception) {
+            result.error("READ_FILE_FAILED", e.message, null)
+        }
+    }
+
+    private fun handleCancelReadFile(call: MethodCall, result: Result) {
+        // Only the ER1 family exposes a cancel-mid-download command in the
+        // Lepu SDK; for other families the only way to abort is to disconnect.
+        val model = call.argument<Int>("model") ?: connectedModel
+        if (model < 0) { result.error("NOT_CONNECTED", "No device connected", null); return }
+        try {
+            when (fileFamilyForModel(model)) {
+                FileFamily.ER1 ->
+                    BleServiceHelper.BleServiceHelper.er1CancelReadFile(model)
+                else -> {
+                    result.error("UNSUPPORTED",
+                        "cancelReadFile is only available on ER1-family devices",
+                        null)
+                    return
+                }
+            }
+            result.success(true)
+        } catch (e: Exception) {
+            result.error("CANCEL_READ_FAILED", e.message, null)
+        }
+    }
+
+    private fun handlePauseReadFile(call: MethodCall, result: Result) {
+        val model = call.argument<Int>("model") ?: connectedModel
+        if (model < 0) { result.error("NOT_CONNECTED", "No device connected", null); return }
+        try {
+            when (fileFamilyForModel(model)) {
+                FileFamily.ER1 ->
+                    BleServiceHelper.BleServiceHelper.er1PauseReadFile(model)
+                else -> {
+                    result.error("UNSUPPORTED",
+                        "pauseReadFile is only available on ER1-family devices",
+                        null)
+                    return
+                }
+            }
+            result.success(true)
+        } catch (e: Exception) {
+            result.error("PAUSE_READ_FAILED", e.message, null)
+        }
+    }
+
+    private fun handleContinueReadFile(call: MethodCall, result: Result) {
+        val model = call.argument<Int>("model") ?: connectedModel
+        if (model < 0) { result.error("NOT_CONNECTED", "No device connected", null); return }
+        try {
+            when (fileFamilyForModel(model)) {
+                FileFamily.ER1 ->
+                    BleServiceHelper.BleServiceHelper.er1ContinueReadFile(model)
+                else -> {
+                    result.error("UNSUPPORTED",
+                        "continueReadFile is only available on ER1-family devices",
+                        null)
+                    return
+                }
+            }
+            result.success(true)
+        } catch (e: Exception) {
+            result.error("CONTINUE_READ_FAILED", e.message, null)
         }
     }
 
@@ -942,6 +1116,26 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             .observeForever { event ->
                 try {
                     sendEvent(mapOf("event" to "deviceInfo", "model" to event.model, "data" to event.data.toString()))
+                    // Legacy O2Ring exposes the file list as part of DeviceInfo,
+                    // so unwrap it and emit a `fileList` event too. We use
+                    // reflection because the DeviceInfo class lives in a sealed
+                    // package; this stays robust if the field is absent.
+                    val info = event.data
+                    val fileList = try {
+                        val getter = info.javaClass.getMethod("getFileList")
+                        getter.invoke(info)
+                    } catch (_: Throwable) { null }
+                    if (fileList is List<*>) {
+                        val files = fileList.filterIsInstance<String>()
+                        if (files.isNotEmpty()) {
+                            sendEvent(mapOf(
+                                "event" to "fileList",
+                                "model" to event.model,
+                                "deviceFamily" to "oxy",
+                                "files" to files,
+                            ))
+                        }
+                    }
                 } catch (e: Exception) { Log.e(TAG, "Oxy Info error", e) }
             }
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Oxy.EventOxyPpgData)
@@ -1132,6 +1326,216 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 ))
             }
 
+        // ════════════════════════════════════════════════════════════
+        // File-transfer events — progress / complete / error per family
+        //
+        // Wire format (consumed by Dart's BluetodevController):
+        //   { event: 'fileReadProgress', model, deviceFamily, progress: 0..1 }
+        //   { event: 'fileReadComplete', model, deviceFamily, fileName,
+        //                                 size, content: <base64>, parsed: { ... } }
+        //   { event: 'fileReadError',    model, deviceFamily, error }
+        //
+        // The `parsed` object holds family-specific best-effort fields
+        // extracted from the Lepu SDK's parsed file struct. Raw bytes
+        // (when the SDK exposes them) ride along in `content` so callers
+        // can re-parse or persist without round-tripping through Dart.
+        // ════════════════════════════════════════════════════════════
+        registerFileTransferObservers()
+
         Log.d(TAG, "LiveEventBus observers registered")
+    }
+
+    // ───── helpers used by the file-transfer observers ─────────────────
+
+    /** Convert a 0..100 (Int) or 0..1 (Float/Double) progress value to 0..1. */
+    private fun normalizeProgress(raw: Any?): Double {
+        val d = when (raw) {
+            is Int    -> raw.toDouble()
+            is Long   -> raw.toDouble()
+            is Float  -> raw.toDouble()
+            is Double -> raw
+            else      -> return 0.0
+        }
+        return if (d > 1.0) (d / 100.0).coerceIn(0.0, 1.0) else d.coerceIn(0.0, 1.0)
+    }
+
+    /** Reflectively call `obj.getName()` and return the result (or null). */
+    private fun reflectGet(obj: Any?, getter: String): Any? {
+        if (obj == null) return null
+        return try {
+            obj.javaClass.getMethod(getter).invoke(obj)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** Encode a byte-array (or null) as a base64 string for the wire format. */
+    private fun bytesToBase64(arr: ByteArray?): String? = arr?.let {
+        android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP)
+    }
+
+    /**
+     * Build the `parsed` map of a fileReadComplete event for a given family.
+     * Best-effort: every getter is reflected so a vendor SDK update that
+     * removes a field doesn't break the whole event.
+     */
+    private fun parsedFileMap(family: String, fileObj: Any): Map<String, Any?> {
+        val getters: List<String> = when (family) {
+            "bp2" -> listOf("getFileName", "getType", "getContent")
+            "er1", "er2" -> listOf("getFileName", "getContent")
+            "oxy" -> listOf(
+                "getFileType", "getFileVersion", "getRecordingTime",
+                "getSpo2List", "getPrList", "getMotionList",
+                "getAvgSpo2", "getAsleepTime", "getAsleepTimePercent",
+                "getBytes",
+            )
+            "oxyII" -> listOf(
+                "getFileType", "getFileVersion", "getDeviceModel",
+                "getStartTime", "getRecordingTime", "getInterval",
+                "getSpo2List", "getPrList", "getMotionList",
+                "getAvgSpo2", "getMinSpo2", "getAvgHr",
+                "getStepCounter", "getO2Score",
+                "getDropsTimes3Percent", "getDropsTimes4Percent",
+                "getDropsTimes90Percent", "getDurationTime90Percent",
+                "getPercentLessThan90", "getRemindHrs", "getRemindsSpo2",
+                "getInterval", "getCheckSum", "getMagic", "getSize",
+                "getChannelType", "getChannelBytes", "getPointBytes",
+                "getBytes",
+            )
+            "pf10aw1" -> listOf(
+                "getFileType", "getFileVersion", "getDeviceModel",
+                "getStartTime", "getEndTime", "getInterval",
+                "getSpo2List", "getPrList",
+                "getCheckSum", "getMagic", "getSize",
+                "getChannelType", "getChannelBytes", "getPointBytes",
+            )
+            else -> emptyList()
+        }
+        val out = mutableMapOf<String, Any?>()
+        for (g in getters) {
+            val v = reflectGet(fileObj, g) ?: continue
+            // Lepu uses Java-bean naming: stripping "get" gives the property name.
+            val key = g.removePrefix("get").replaceFirstChar { it.lowercase() }
+            out[key] = when (v) {
+                is ByteArray  -> bytesToBase64(v)
+                is IntArray   -> v.toList()
+                is ShortArray -> v.toList()
+                is FloatArray -> v.toList()
+                is List<*>    -> v
+                else          -> v.toString()
+            }
+        }
+        return out
+    }
+
+    private fun emitReadingProgress(family: String, model: Int, raw: Any?) {
+        sendEvent(mapOf(
+            "event" to "fileReadProgress",
+            "deviceFamily" to family,
+            "model" to model,
+            "progress" to normalizeProgress(raw),
+        ))
+    }
+
+    private fun emitReadComplete(family: String, model: Int, fileObj: Any) {
+        try {
+            val name = reflectGet(fileObj, "getFileName") as? String
+            val content = reflectGet(fileObj, "getContent") as? ByteArray
+                ?: reflectGet(fileObj, "getBytes")   as? ByteArray
+                ?: reflectGet(fileObj, "getPointBytes") as? ByteArray
+            sendEvent(mapOf(
+                "event" to "fileReadComplete",
+                "deviceFamily" to family,
+                "model" to model,
+                "fileName" to (name ?: ""),
+                "size" to (content?.size ?: 0),
+                "content" to bytesToBase64(content),
+                "parsed" to parsedFileMap(family, fileObj),
+            ))
+        } catch (e: Exception) {
+            Log.e(TAG, "$family file complete error", e)
+            sendEvent(mapOf(
+                "event" to "fileReadError",
+                "deviceFamily" to family,
+                "model" to model,
+                "error" to (e.message ?: "unknown"),
+            ))
+        }
+    }
+
+    private fun emitReadError(family: String, model: Int, raw: Any?) {
+        sendEvent(mapOf(
+            "event" to "fileReadError",
+            "deviceFamily" to family,
+            "model" to model,
+            "error" to (raw?.toString() ?: "unknown"),
+        ))
+    }
+
+    /** Subscribe to every Lepu-SDK file-transfer event we forward to Dart. */
+    private fun registerFileTransferObservers() {
+        // ── ER1 family ────────────────────────────────────────────────
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.ER1.EventEr1ReadingFileProgress)
+            .observeForever { e -> emitReadingProgress("er1", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.ER1.EventEr1ReadFileComplete)
+            .observeForever { e -> emitReadComplete("er1", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.ER1.EventEr1ReadFileError)
+            .observeForever { e -> emitReadError("er1", e.model, e.data) }
+
+        // ── ER2 family ────────────────────────────────────────────────
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.ER2.EventEr2ReadingFileProgress)
+            .observeForever { e -> emitReadingProgress("er2", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.ER2.EventEr2ReadFileComplete)
+            .observeForever { e -> emitReadComplete("er2", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.ER2.EventEr2ReadFileError)
+            .observeForever { e -> emitReadError("er2", e.model, e.data) }
+
+        // ── BP2 family ────────────────────────────────────────────────
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.BP2.EventBp2ReadingFileProgress)
+            .observeForever { e -> emitReadingProgress("bp2", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.BP2.EventBp2ReadFileComplete)
+            .observeForever { e -> emitReadComplete("bp2", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.BP2.EventBp2ReadFileError)
+            .observeForever { e -> emitReadError("bp2", e.model, e.data) }
+
+        // ── Oxy (legacy O2Ring) family ────────────────────────────────
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Oxy.EventOxyReadingFileProgress)
+            .observeForever { e -> emitReadingProgress("oxy", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Oxy.EventOxyReadFileComplete)
+            .observeForever { e -> emitReadComplete("oxy", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Oxy.EventOxyReadFileError)
+            .observeForever { e -> emitReadError("oxy", e.model, e.data) }
+
+        // ── OxyII family ──────────────────────────────────────────────
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.OxyII.EventOxyIIGetFileList)
+            .observeForever { e ->
+                try {
+                    val files = e.data as? ArrayList<String> ?: arrayListOf()
+                    sendEvent(mapOf("event" to "fileList",
+                        "model" to e.model, "deviceFamily" to "oxyII", "files" to files))
+                } catch (ex: Exception) { Log.e(TAG, "OxyII FileList error", ex) }
+            }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.OxyII.EventOxyIIReadingFileProgress)
+            .observeForever { e -> emitReadingProgress("oxyII", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.OxyII.EventOxyIIReadFileComplete)
+            .observeForever { e -> emitReadComplete("oxyII", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.OxyII.EventOxyIIReadFileError)
+            .observeForever { e -> emitReadError("oxyII", e.model, e.data) }
+
+        // ── PF-10AW1 family (FOxi parents) ────────────────────────────
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Pf10Aw1.EventPf10Aw1GetFileList)
+            .observeForever { e ->
+                try {
+                    val files = e.data as? ArrayList<String> ?: arrayListOf()
+                    sendEvent(mapOf("event" to "fileList",
+                        "model" to e.model, "deviceFamily" to "pf10aw1", "files" to files))
+                } catch (ex: Exception) { Log.e(TAG, "Pf10Aw1 FileList error", ex) }
+            }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Pf10Aw1.EventPf10Aw1ReadingFileProgress)
+            .observeForever { e -> emitReadingProgress("pf10aw1", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Pf10Aw1.EventPf10Aw1ReadFileComplete)
+            .observeForever { e -> emitReadComplete("pf10aw1", e.model, e.data) }
+        LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Pf10Aw1.EventPf10Aw1ReadFileError)
+            .observeForever { e -> emitReadError("pf10aw1", e.model, e.data) }
     }
 }

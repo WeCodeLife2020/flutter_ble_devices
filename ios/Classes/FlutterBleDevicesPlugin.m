@@ -103,6 +103,14 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 @property (nonatomic, strong) CBCharacteristic *airBPRxChar;
 @property (nonatomic, strong) NSMutableData    *airBPRxBuffer;
 
+// In-progress URAT file download (BP2 / ER1 / ER2 / WOxi / FOxi / ER3 / MSeries).
+// The URAT protocol is three-step: prepareReadFile → readFile:offset (chunked) →
+// endReadFile. We hold these here so dispatchURATResponse can drive the
+// state machine across the per-chunk responses.
+@property (nonatomic, copy)   NSString       *pendingReadFileName;
+@property (nonatomic, strong) NSMutableData  *pendingReadBuffer;
+@property (nonatomic, assign) uint32_t        pendingReadTotalSize;
+
 // State
 @property (nonatomic, assign) BOOL serviceInitialized;
 @property (nonatomic, assign) BOOL serviceDeployed;    // services/chars discovered
@@ -194,6 +202,17 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     if ([method isEqualToString:@"stopMeasurement"])        { [self handleStopMeasurement:call result:result];  return; }
     if ([method isEqualToString:@"getDeviceInfo"])          { [self handleGetDeviceInfo:call result:result];    return; }
     if ([method isEqualToString:@"getFileList"])            { [self handleGetFileList:call result:result];      return; }
+    if ([method isEqualToString:@"readFile"])               { [self handleReadFile:call result:result];         return; }
+    if ([method isEqualToString:@"cancelReadFile"])         { [self handleCancelReadFile:call result:result];   return; }
+    if ([method isEqualToString:@"pauseReadFile"]
+        || [method isEqualToString:@"continueReadFile"]) {
+        // The URAT protocol does not expose pause/continue; advise the
+        // caller to disconnect & reconnect for true cancellation.
+        result([FlutterError errorWithCode:@"UNSUPPORTED"
+                                   message:@"pause/continueReadFile is not supported on iOS; disconnect to abort"
+                                   details:nil]);
+        return;
+    }
     if ([method isEqualToString:@"factoryReset"])           { [self handleFactoryReset:call result:result];     return; }
     if ([method isEqualToString:@"updateUserInfo"])         { [self handleUpdateUserInfo:call result:result]; return; }
     result(FlutterMethodNotImplemented);
@@ -422,10 +441,13 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
         [self.central cancelPeripheralConnection:self.activePeripheral];
     }
 #endif
-    // Tear down Viatom utils
+    // Tear down Viatom utils + any in-flight file download state.
     [self stopRtPoll];
     self.uratUtil = nil;
     self.o2Util   = nil;
+    self.pendingReadFileName  = nil;
+    self.pendingReadBuffer    = nil;
+    self.pendingReadTotalSize = 0;
     self.connectedModel = -1;
     self.serviceDeployed = NO;
     FBD_LOG(@"disconnect requested");
@@ -643,6 +665,90 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     result(@YES);
 }
 
+#pragma mark - File transfer (history download)
+
+// File-transfer family classification — pulls the exact `family` string
+// already chosen by VTMDeviceTypeMapper so Dart consumers see the same
+// values the Android plugin emits ("er1" / "er2" / "bp2" / "oxy" / ...).
+- (NSString *)fileFamilyForActiveMapping {
+    NSString *family = self.activeMapping.family;
+    return family.length ? family : @"unknown";
+}
+
+- (void)handleReadFile:(FlutterMethodCall *)call result:(FlutterResult)result {
+    if (![self ensureReady:result]) return;
+    NSString *fileName = call.arguments[@"fileName"];
+    if (fileName.length == 0) {
+        result([FlutterError errorWithCode:@"BAD_ARG"
+                                   message:@"fileName is required"
+                                   details:nil]);
+        return;
+    }
+    VTMDeviceMapping *m = self.activeMapping;
+    if (m.protocolPath == VTMProtocolPathIComon) {
+        result([FlutterError errorWithCode:@"UNSUPPORTED"
+                                   message:@"iComon scales have no on-device file storage."
+                                   details:nil]);
+        return;
+    }
+    if (m.protocolPath == VTMProtocolPathAirBP) {
+        result([FlutterError errorWithCode:@"UNSUPPORTED"
+                                   message:@"AirBP devices have no on-device file storage."
+                                   details:nil]);
+        return;
+    }
+    if (self.pendingReadFileName != nil) {
+        result([FlutterError errorWithCode:@"BUSY"
+                                   message:@"A file read is already in progress; wait for fileReadComplete or disconnect."
+                                   details:nil]);
+        return;
+    }
+
+    // Legacy O2 path has a one-shot API that handles chunking + progress
+    // internally and surfaces results through `postCurrentReadProgress:` /
+    // `readCompleteWithData:`.
+    if (m.protocolPath == VTMProtocolPathO2Legacy) {
+        self.pendingReadFileName  = fileName;
+        self.pendingReadBuffer    = nil;
+        self.pendingReadTotalSize = 0;
+        [self.o2Util beginReadFileWithFileName:fileName];
+        result(@YES);
+        return;
+    }
+
+    // URAT path — three-step protocol. We send `prepareReadFile`; the
+    // device responds with VTMBLECmdStartRead carrying the file length,
+    // which dispatchURATResponse uses to bootstrap the chunked download.
+    self.pendingReadFileName  = fileName;
+    self.pendingReadBuffer    = [NSMutableData data];
+    self.pendingReadTotalSize = 0;
+    [self.uratUtil prepareReadFile:fileName];
+    result(@YES);
+}
+
+- (void)handleCancelReadFile:(FlutterMethodCall *)call result:(FlutterResult)result {
+    if (self.pendingReadFileName == nil) {
+        result(@NO);
+        return;
+    }
+    VTMDeviceMapping *m = self.activeMapping;
+    if (m.protocolPath != VTMProtocolPathO2Legacy && self.uratUtil != nil) {
+        // Best effort — tell the device we're done; it will resume serving
+        // other commands once it sees endReadFile.
+        [self.uratUtil endReadFile];
+    }
+    NSString *fileName = self.pendingReadFileName;
+    self.pendingReadFileName  = nil;
+    self.pendingReadBuffer    = nil;
+    self.pendingReadTotalSize = 0;
+    [self sendEvent:@{@"event": @"fileReadError",
+                      @"deviceFamily": [self fileFamilyForActiveMapping],
+                      @"model": @(self.connectedModel),
+                      @"fileName": fileName ?: @"",
+                      @"error": @"cancelled"}];
+    result(@YES);
+}
+
 - (void)handleFactoryReset:(FlutterMethodCall *)call result:(FlutterResult)result {
     if (![self ensureReady:result]) return;
     VTMDeviceMapping *m = self.activeMapping;
@@ -780,6 +886,11 @@ didDisconnectPeripheral:(CBPeripheral *)peripheral
     FBD_LOG(@"didDisconnect uuid=%@ err=%@",
             peripheral.identifier.UUIDString, error.localizedDescription);
     [self stopRtPoll];
+    // Surface any in-flight file read as a `cancelled` error so the Dart
+    // future doesn't hang.
+    if (self.pendingReadFileName != nil) {
+        [self emitFileReadError:@"disconnected"];
+    }
     self.activePeripheral = nil;
     self.activeMapping    = nil;
     self.connectedModel   = -1;
@@ -877,6 +988,61 @@ commandCompletion:(u_char)cmdType
                           @"state": @(bi.state),
                           @"percent": @(bi.percent),
                           @"voltage": @(bi.voltage)}];
+        return;
+    }
+    // ── File-read state machine (BP2 / ER1 / ER2 / WOxi / FOxi / etc.) ──
+    if (cmdType == VTMBLECmdStartRead) {
+        // The device reports the file's total length; bootstrap the
+        // chunked download at offset 0.
+        if (self.pendingReadFileName == nil) return;
+        VTMOpenFileReturn r = [VTMBLEParser parseFileLength:response];
+        if (r.file_size == 0) {
+            [self emitFileReadError:@"open returned size 0"];
+            return;
+        }
+        self.pendingReadTotalSize = r.file_size;
+        if (self.pendingReadBuffer == nil) {
+            self.pendingReadBuffer = [NSMutableData dataWithCapacity:r.file_size];
+        }
+        [self.uratUtil readFile:0];
+        return;
+    }
+    if (cmdType == VTMBLECmdReadFile) {
+        // One chunk arrived; append, emit progress, ask for the next chunk
+        // or call endReadFile if we're done.
+        if (self.pendingReadFileName == nil) return;
+        if (response.length > 0) {
+            [self.pendingReadBuffer appendData:response];
+        }
+        double progress = self.pendingReadTotalSize == 0 ? 0.0
+            : MIN(1.0, (double)self.pendingReadBuffer.length / (double)self.pendingReadTotalSize);
+        [self sendEvent:@{@"event":        @"fileReadProgress",
+                          @"deviceFamily": [self fileFamilyForActiveMapping],
+                          @"model":        @(self.connectedModel),
+                          @"fileName":     self.pendingReadFileName ?: @"",
+                          @"progress":     @(progress)}];
+        if (self.pendingReadBuffer.length >= self.pendingReadTotalSize) {
+            [self.uratUtil endReadFile];
+        } else {
+            [self.uratUtil readFile:(uint32_t)self.pendingReadBuffer.length];
+        }
+        return;
+    }
+    if (cmdType == VTMBLECmdEndRead) {
+        // The device acknowledged endReadFile; emit the final event.
+        if (self.pendingReadFileName == nil) return;
+        NSString *family   = [self fileFamilyForActiveMapping];
+        NSString *fileName = self.pendingReadFileName;
+        NSData   *content  = [self.pendingReadBuffer copy] ?: [NSData data];
+        self.pendingReadFileName  = nil;
+        self.pendingReadBuffer    = nil;
+        self.pendingReadTotalSize = 0;
+        [self sendEvent:@{@"event":        @"fileReadComplete",
+                          @"deviceFamily": family,
+                          @"model":        @(self.connectedModel),
+                          @"fileName":     fileName,
+                          @"size":         @(content.length),
+                          @"content":      [content base64EncodedStringWithOptions:0]}];
         return;
     }
     if (cmdType == VTMBLECmdGetFileList) {
@@ -1460,15 +1626,60 @@ commandCompletion:(u_char)cmdType
     [self sendEvent:@{@"event": @"rssi", @"rssi": RSSI ?: @0}];
 }
 
+// ── File-transfer helpers + legacy-O2 delegate callbacks ─────────────
+
+/// Emit a `fileReadError` event using the current pending-read context
+/// (or empty fields if no read is in flight) and reset state.
+- (void)emitFileReadError:(NSString *)reason {
+    NSString *family   = [self fileFamilyForActiveMapping];
+    NSString *fileName = self.pendingReadFileName ?: @"";
+    self.pendingReadFileName  = nil;
+    self.pendingReadBuffer    = nil;
+    self.pendingReadTotalSize = 0;
+    [self sendEvent:@{@"event":        @"fileReadError",
+                      @"deviceFamily": family,
+                      @"model":        @(self.connectedModel),
+                      @"fileName":     fileName,
+                      @"error":        reason ?: @"unknown"}];
+}
+
+/// Legacy-O2 path (`VTO2Communicate`): `beginReadFileWithFileName:` drives
+/// a fully-managed download internally and reports progress + completion
+/// via these two delegate methods. We forward both into the unified
+/// `fileReadProgress` / `fileReadComplete` wire-format.
 - (void)postCurrentReadProgress:(double)progress {
-    [self sendEvent:@{@"event": @"readProgress", @"progress": @(progress)}];
+    if (self.pendingReadFileName == nil) return;
+    [self sendEvent:@{@"event":        @"fileReadProgress",
+                      @"deviceFamily": @"oxy",
+                      @"model":        @(self.connectedModel),
+                      @"fileName":     self.pendingReadFileName,
+                      @"progress":     @(MIN(1.0, MAX(0.0, progress)))}];
 }
 
 - (void)readCompleteWithData:(VTFileToRead *)fileData {
-    [self sendEvent:@{@"event": @"readComplete",
-                      @"fileName": fileData.fileName ?: @"",
-                      @"size": @(fileData.fileSize),
-                      @"totalPkgNum": @(fileData.totalPkgNum)}];
+    NSString *fileName = self.pendingReadFileName ?: fileData.fileName ?: @"";
+    self.pendingReadFileName  = nil;
+    self.pendingReadBuffer    = nil;
+    self.pendingReadTotalSize = 0;
+
+    NSData *content = fileData.fileData ?: [NSData data];
+    if (fileData.enLoadResult != 0) {
+        // Non-zero VTFileLoadResult means the SDK reports a failure. Surface
+        // as a fileReadError so consumers don't process garbage.
+        [self sendEvent:@{@"event":        @"fileReadError",
+                          @"deviceFamily": @"oxy",
+                          @"model":        @(self.connectedModel),
+                          @"fileName":     fileName,
+                          @"error":        [NSString stringWithFormat:@"VTFileLoadResult=%d",
+                                            (int)fileData.enLoadResult]}];
+        return;
+    }
+    [self sendEvent:@{@"event":        @"fileReadComplete",
+                      @"deviceFamily": @"oxy",
+                      @"model":        @(self.connectedModel),
+                      @"fileName":     fileName,
+                      @"size":         @(content.length),
+                      @"content":      [content base64EncodedStringWithOptions:0]}];
 }
 
 #pragma mark - ICDeviceManagerDelegate  (iComon scale path)

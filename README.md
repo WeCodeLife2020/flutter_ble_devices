@@ -247,7 +247,11 @@ Emitted on `BluetodevController.eventStream`:
 { 'event': 'rtData', 'deviceType', 'deviceFamily', 'model', <fields> }
 { 'event': 'rtWaveform', 'deviceType', 'deviceFamily', 'model', <fields> }
 { 'event': 'deviceInfo', 'model', ... }
-{ 'event': 'fileList',  'model', 'files': [...] }
+{ 'event': 'fileList',  'model', 'deviceFamily'?, 'files': [String] }
+{ 'event': 'fileReadProgress', 'model', 'deviceFamily', 'fileName'?, 'progress': 0..1 }
+{ 'event': 'fileReadComplete', 'model', 'deviceFamily', 'fileName',
+                                'size', 'content': <base64>?, 'parsed'?: {...} }
+{ 'event': 'fileReadError',    'model', 'deviceFamily', 'fileName'?, 'error' }
 { 'event': 'battery',   'state', 'percent', 'voltage' }
 ```
 
@@ -270,6 +274,126 @@ On iOS, unstructured device responses (unmapped cmdTypes) are emitted as:
 
 ```
 { 'event': 'raw', 'cmdType', 'deviceType', 'data': '<base64>' }
+```
+
+---
+
+## Fetching on-device history (file transfer)
+
+Most Lepu/Viatom devices store their measurement records on internal
+flash. The plugin exposes a single cross-platform API to enumerate that
+storage and pull every record onto the phone.
+
+### Supported families
+
+| Family       | List | Download | Pause / Resume / Cancel |
+| ---          | ---  | ---      | ---                     |
+| `bp2`        | yes  | yes      | cancel only             |
+| `er1`        | yes  | yes      | **all three** (Android) |
+| `er2`        | yes  | yes      | cancel only             |
+| `oxy`        | yes (via `getDeviceInfo`) | yes | cancel only |
+| `oxyII`      | yes  | yes (Android only — iOS lumps OxyII into `woxi`) | cancel only |
+| `pf10aw1`    | yes  | yes      | cancel only             |
+| `airbp`      | n/a  | n/a — devices have no flash storage             | n/a |
+| `icomon`     | n/a  | n/a — scales return measurements live           | n/a |
+
+### One-shot helper
+
+```dart
+import 'package:flutter_ble_devices/flutter_ble_devices.dart';
+
+await for (final file in BluetodevController.downloadAllFiles()) {
+  print('Downloaded ${file.fileName} (${file.size} bytes)');
+  final bp2 = file.parsed; // SDK-parsed fields, family-specific
+  await persist(file.fileName, file.content, parsed: bp2);
+}
+```
+
+### Manual driving
+
+```dart
+// 1. Listen for the file list and the per-file events.
+final list = await BluetodevController.fileListEventStream.first;
+final progressSub = BluetodevController.fileReadProgressStream.listen((p) {
+  print('${p.fileName}: ${(p.progress * 100).toStringAsFixed(0)}%');
+});
+
+// 2. Pull each file sequentially.
+for (final name in list.files) {
+  await BluetodevController.readFile(fileName: name);
+  final done = await BluetodevController.fileReadCompleteStream
+      .firstWhere((e) => e.fileName == name)
+      .timeout(const Duration(seconds: 60));
+  await persist(done.fileName, done.content);
+}
+
+// 3. Optional: cancel mid-download (ER1 family natively, others via
+//    BluetodevController.disconnect()).
+await BluetodevController.cancelReadFile();
+
+await progressSub.cancel();
+```
+
+### `parsed` field reference per family
+
+The `parsed` map on `fileReadComplete` carries the typed fields the
+vendor SDK has already decoded for you. On iOS only the legacy O2 path
+populates `parsed`; URAT-protocol families (BP2, ER1/ER2, WOxi, FOxi,
+ER3, M-series) deliver the raw bytes via `content` and Dart-side
+parsing is up to you (or use the helpers below).
+
+| `deviceFamily` | `parsed` keys                                                                                |
+| ---            | ---                                                                                          |
+| `bp2`          | `fileName`, `type`, `content` (base64)                                                       |
+| `er1`, `er2`   | `fileName`, `content` (base64)                                                               |
+| `oxy`          | `fileType`, `fileVersion`, `recordingTime`, `spo2List`, `prList`, `motionList`, `avgSpo2`, `asleepTime`, `asleepTimePercent` |
+| `oxyII`        | `fileType`, `fileVersion`, `deviceModel`, `startTime`, `interval`, `spo2List`, `prList`, `motionList`, `avgSpo2`, `minSpo2`, `avgHr`, `stepCounter`, `o2Score`, `dropsTimes3Percent`, `dropsTimes4Percent`, `dropsTimes90Percent`, `durationTime90Percent`, `percentLessThan90`, `remindHrs`, `remindsSpo2`, `checkSum`, `magic`, `size`, `channelType`, `channelBytes`, `pointBytes` |
+| `pf10aw1`      | `fileType`, `fileVersion`, `deviceModel`, `startTime`, `endTime`, `interval`, `spo2List`, `prList`, `checkSum`, `magic`, `size`, `channelType`, `channelBytes`, `pointBytes` |
+
+### Pause / resume / cancel semantics
+
+- **Cancel** – Android sends the ER1-only `er1CancelReadFile` for the
+  ER1 family; for every other family the plugin returns `UNSUPPORTED`.
+  iOS calls `endReadFile` on the URAT util, which gracefully ends the
+  three-step protocol. In all cases [`disconnect()`](#) is the
+  guaranteed-clean way to abort.
+- **Pause / Resume** – ER1 family on Android only.
+  `pauseReadFile()` / `continueReadFile()` map to `er1PauseReadFile`
+  / `er1ContinueReadFile`. iOS returns `UNSUPPORTED`.
+
+### Wire format
+
+The native plugins emit four events. Wire keys are stable across
+platforms; both Kotlin (`FlutterBleDevicesPlugin.kt`) and Obj-C
+(`FlutterBleDevicesPlugin.m`) build the same dictionaries.
+
+```jsonc
+{
+  "event": "fileList",
+  "model": 19,
+  "deviceFamily": "bp2",
+  "files": ["20240501-093015.bin", ...]
+}
+{
+  "event": "fileReadProgress",
+  "model": 19, "deviceFamily": "bp2",
+  "fileName": "20240501-093015.bin",
+  "progress": 0.42
+}
+{
+  "event": "fileReadComplete",
+  "model": 19, "deviceFamily": "bp2",
+  "fileName": "20240501-093015.bin",
+  "size": 14380,
+  "content": "<base64>",          // raw file bytes (when SDK exposes them)
+  "parsed":  { "fileName": "...", "type": 1, "content": "<base64>" }
+}
+{
+  "event": "fileReadError",
+  "model": 19, "deviceFamily": "bp2",
+  "fileName": "20240501-093015.bin",
+  "error": "disconnected"
+}
 ```
 
 ---
