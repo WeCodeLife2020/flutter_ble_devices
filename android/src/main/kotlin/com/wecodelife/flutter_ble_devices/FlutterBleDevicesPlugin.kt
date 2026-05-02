@@ -85,6 +85,14 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     // consumer hops between devices.
     private val knownFilesByModel = mutableMapOf<Int, MutableSet<String>>()
 
+    // Most-recent file name passed to a `readFile()` for each model. The
+    // ER1 family's `continueReadFile(model, fileName)` overload requires
+    // the filename of the in-flight transfer, but `pauseReadFile` /
+    // `cancelReadFile` only take the model. We cache the filename here
+    // so a Dart-driven `continueReadFile()` call (which only carries the
+    // model) can still issue the correct command. Cleared on disconnect.
+    private val lastReadFileNameByModel = mutableMapOf<Int, String>()
+
     // Per-family curStatus tracking for the auto-fetch-on-finish logic.
     // The Lepu SDK reports curStatus on every rtData chunk; we trigger a
     // file pull when status transitions into the "saved" terminal state
@@ -175,15 +183,18 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         override fun onReceiveWeightData(device: ICDevice?, data: ICWeightData?) {
             if (device == null || data == null) return
 
-            val w = data.weight_kg.toDouble()
+            // ICWeightData declares every body-composition field as a
+            // Java `double` (verified against ICDeviceManager.aar's
+            // classes.jar), so no .toDouble() conversion is needed.
+            val w = data.weight_kg
             // Round helper
             fun r1(v: Double) = Math.round(v * 10.0) / 10.0
             fun r2(v: Double) = Math.round(v * 100.0) / 100.0
 
             // Convert percentages to kg where the original app shows kg
-            val muscleKg = r1(data.musclePercent.toDouble() / 100.0 * w)
-            val skeletalMuscleKg = r1(data.smPercent.toDouble() / 100.0 * w)
-            val fatMassKg = r1(data.bodyFatPercent.toDouble() / 100.0 * w)
+            val muscleKg = r1(data.musclePercent / 100.0 * w)
+            val skeletalMuscleKg = r1(data.smPercent / 100.0 * w)
+            val fatMassKg = r1(data.bodyFatPercent / 100.0 * w)
 
             sendEvent(mapOf(
                 "event" to "rtData",
@@ -193,22 +204,22 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 "sdk" to "icomon",
                 "isLocked" to data.isStabilized,
                 "weightKg" to r2(w),
-                "bmi" to r1(data.bmi.toDouble()),
-                "fat" to r1(data.bodyFatPercent.toDouble()),
+                "bmi" to r1(data.bmi),
+                "fat" to r1(data.bodyFatPercent),
                 "fat_mass" to fatMassKg,
                 "muscle" to muscleKg,
-                "musclePercent" to r1(data.musclePercent.toDouble()),
-                "water" to r1(data.moisturePercent.toDouble()),
-                "bone" to r1(data.boneMass.toDouble()),
-                "protein" to r1(data.proteinPercent.toDouble()),
+                "musclePercent" to r1(data.musclePercent),
+                "water" to r1(data.moisturePercent),
+                "bone" to r1(data.boneMass),
+                "protein" to r1(data.proteinPercent),
                 "bmr" to data.bmr,
-                "visceral" to r1(data.visceralFat.toDouble()),
+                "visceral" to r1(data.visceralFat),
                 "skeletal_muscle" to skeletalMuscleKg,
-                "skeletalMusclePercent" to r1(data.smPercent.toDouble()),
-                "subcutaneous" to r1(data.subcutaneousFatPercent.toDouble()),
+                "skeletalMusclePercent" to r1(data.smPercent),
+                "subcutaneous" to r1(data.subcutaneousFatPercent),
                 "body_age" to data.physicalAge,
-                "ci" to r1(data.smi.toDouble()),
-                "body_score" to r1(data.bodyScore.toDouble()),
+                "ci" to r1(data.smi),
+                "body_score" to r1(data.bodyScore),
                 "temperature" to data.temperature,
                 "heartRate" to data.hr,
                 "impedance" to data.imp
@@ -746,6 +757,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             activeIComonDevice = null
             connectedModel = -1
             knownFilesByModel.clear()
+            lastReadFileNameByModel.clear()
             lastEr1CurStatus = -1
             lastEr2CurStatus = -1
             lastBp2MeasureType = ""
@@ -781,8 +793,11 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             return
         }
         try {
+            // ICSettingCallback.onCallBack is a single-arg interface in
+            // ICDeviceManager.aar (`onCallBack(ICSettingCallBackCode)`).
+            // The lambda has the same arity.
             ICDeviceManager.shared().settingManager
-                .readHistoryData(device) { _, code ->
+                .readHistoryData(device) { code ->
                     Log.d(TAG, "iComon readHistoryData returned code=$code")
                 }
             result.success(true)
@@ -964,7 +979,10 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 FileFamily.BP2 ->
                     BleServiceHelper.BleServiceHelper.bp2GetFileList(model)
                 FileFamily.OXYII ->
-                    BleServiceHelper.BleServiceHelper.oxyIIGetFileList(model)
+                    BleServiceHelper.BleServiceHelper.oxyIIGetFileList(
+                        model,
+                        com.lepu.blepro.constants.Constant.OxyIIFileType.OXY,
+                    )
                 FileFamily.PF10AW1 ->
                     BleServiceHelper.BleServiceHelper.pf10Aw1GetFileList(model)
                 FileFamily.OXY ->
@@ -977,6 +995,8 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     }
 
     private fun triggerReadFile(family: FileFamily, model: Int, fileName: String) {
+        // Cache for ER1's `continueReadFile(model, fileName)` lookup.
+        lastReadFileNameByModel[model] = fileName
         try {
             when (family) {
                 FileFamily.ER1 ->
@@ -988,7 +1008,11 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 FileFamily.OXY ->
                     BleServiceHelper.BleServiceHelper.oxyReadFile(model, fileName)
                 FileFamily.OXYII ->
-                    BleServiceHelper.BleServiceHelper.oxyIIReadFile(model, fileName)
+                    BleServiceHelper.BleServiceHelper.oxyIIReadFile(
+                        model,
+                        fileName,
+                        com.lepu.blepro.constants.Constant.OxyIIFileType.OXY,
+                    )
                 FileFamily.PF10AW1 ->
                     BleServiceHelper.BleServiceHelper.pf10Aw1ReadFile(model, fileName)
                 FileFamily.NONE -> { /* nothing to do */ }
@@ -1054,7 +1078,10 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 FileFamily.BP2 ->
                     BleServiceHelper.BleServiceHelper.bp2GetFileList(model)
                 FileFamily.OXYII ->
-                    BleServiceHelper.BleServiceHelper.oxyIIGetFileList(model)
+                    BleServiceHelper.BleServiceHelper.oxyIIGetFileList(
+                        model,
+                        com.lepu.blepro.constants.Constant.OxyIIFileType.OXY,
+                    )
                 FileFamily.PF10AW1 ->
                     BleServiceHelper.BleServiceHelper.pf10Aw1GetFileList(model)
                 FileFamily.OXY -> {
@@ -1084,6 +1111,8 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         if (fileName.isNullOrEmpty()) {
             result.error("BAD_ARG", "fileName is required", null); return
         }
+        // Cache for ER1's `continueReadFile(model, fileName)` lookup.
+        lastReadFileNameByModel[model] = fileName
         try {
             when (fileFamilyForModel(model)) {
                 FileFamily.ER1 ->
@@ -1095,7 +1124,11 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 FileFamily.OXY ->
                     BleServiceHelper.BleServiceHelper.oxyReadFile(model, fileName)
                 FileFamily.OXYII ->
-                    BleServiceHelper.BleServiceHelper.oxyIIReadFile(model, fileName)
+                    BleServiceHelper.BleServiceHelper.oxyIIReadFile(
+                        model,
+                        fileName,
+                        com.lepu.blepro.constants.Constant.OxyIIFileType.OXY,
+                    )
                 FileFamily.PF10AW1 ->
                     BleServiceHelper.BleServiceHelper.pf10Aw1ReadFile(model, fileName)
                 FileFamily.NONE -> {
@@ -1158,8 +1191,23 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         if (model < 0) { result.error("NOT_CONNECTED", "No device connected", null); return }
         try {
             when (fileFamilyForModel(model)) {
-                FileFamily.ER1 ->
-                    BleServiceHelper.BleServiceHelper.er1ContinueReadFile(model)
+                FileFamily.ER1 -> {
+                    // The 1.2.0 AAR removed the single-arg er1ContinueReadFile
+                    // overload from the public API; the canonical signature
+                    // is now (model, fileName). Look up the in-flight name.
+                    val fileName = call.argument<String>("fileName")
+                        ?: lastReadFileNameByModel[model]
+                    if (fileName.isNullOrEmpty()) {
+                        result.error(
+                            "BAD_STATE",
+                            "continueReadFile called without an in-flight readFile() " +
+                                "and no explicit fileName argument",
+                            null,
+                        )
+                        return
+                    }
+                    BleServiceHelper.BleServiceHelper.er1ContinueReadFile(model, fileName)
+                }
                 else -> {
                     result.error("UNSUPPORTED",
                         "continueReadFile is only available on ER1-family devices",
@@ -1353,7 +1401,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.ER2.EventEr2FileList)
             .observeForever { event ->
                 try {
-                    val files = event.data as? ArrayList<String> ?: arrayListOf()
+                    val files = extractFileList(event.data)
                     sendEvent(mapOf("event" to "fileList", "model" to event.model,
                         "deviceFamily" to "er2", "files" to files))
                     maybeTriggerCatchUp(FileFamily.ER2, event.model, files)
@@ -1377,7 +1425,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.ER1.EventEr1FileList)
             .observeForever { event ->
                 try {
-                    val files = event.data as? ArrayList<String> ?: arrayListOf()
+                    val files = extractFileList(event.data)
                     sendEvent(mapOf("event" to "fileList", "model" to event.model,
                         "deviceFamily" to "er1", "files" to files))
                     maybeTriggerCatchUp(FileFamily.ER1, event.model, files)
@@ -1420,7 +1468,12 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Oxy.EventOxySyncDeviceInfo)
             .observeForever { event ->
                 try {
-                    val types = event.data as? Array<String> ?: return@observeForever
+                    // EventOxySyncDeviceInfo posts an Array<String>. Filter
+                    // through Any[] then keep only String elements to side-
+                    // step the UNCHECKED_CAST that Array<String> would
+                    // otherwise trigger via Java's erased generics.
+                    val arr = event.data as? Array<*> ?: return@observeForever
+                    val types = arr.filterIsInstance<String>()
                     if (types.isNotEmpty() && types[0] == "SetTIME") {
                         sendEvent(mapOf(
                             "event" to "connectionState", "state" to "connected",
@@ -1635,7 +1688,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.BP2.EventBp2FileList)
             .observeForever { event ->
                 try {
-                    val files = event.data as? ArrayList<String> ?: arrayListOf()
+                    val files = extractFileList(event.data)
                     sendEvent(mapOf("event" to "fileList", "model" to event.model,
                         "deviceFamily" to "bp2", "files" to files))
                     maybeTriggerCatchUp(FileFamily.BP2, event.model, files)
@@ -1706,6 +1759,18 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     /** Encode a byte-array (or null) as a base64 string for the wire format. */
     private fun bytesToBase64(arr: ByteArray?): String? = arr?.let {
         android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP)
+    }
+
+    /**
+     * Type-safe extraction of a `fileList` payload. The Lepu SDK posts an
+     * `ArrayList<String>` on every `EventXxxFileList` channel, but Java
+     * generics are erased so a direct `as ArrayList<String>` triggers an
+     * UNCHECKED_CAST warning. Filtering by `String` instance restores the
+     * type guarantee at runtime with no behaviour change.
+     */
+    private fun extractFileList(data: Any?): ArrayList<String> {
+        val list = data as? List<*> ?: return arrayListOf()
+        return ArrayList(list.filterIsInstance<String>())
     }
 
     /**
@@ -1844,7 +1909,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.OxyII.EventOxyIIGetFileList)
             .observeForever { e ->
                 try {
-                    val files = e.data as? ArrayList<String> ?: arrayListOf()
+                    val files = extractFileList(e.data)
                     sendEvent(mapOf("event" to "fileList",
                         "model" to e.model, "deviceFamily" to "oxyII", "files" to files))
                     maybeTriggerCatchUp(FileFamily.OXYII, e.model, files)
@@ -1861,7 +1926,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         LiveEventBus.get<InterfaceEvent>(InterfaceEvent.Pf10Aw1.EventPf10Aw1GetFileList)
             .observeForever { e ->
                 try {
-                    val files = e.data as? ArrayList<String> ?: arrayListOf()
+                    val files = extractFileList(e.data)
                     sendEvent(mapOf("event" to "fileList",
                         "model" to e.model, "deviceFamily" to "pf10aw1", "files" to files))
                     maybeTriggerCatchUp(FileFamily.PF10AW1, e.model, files)

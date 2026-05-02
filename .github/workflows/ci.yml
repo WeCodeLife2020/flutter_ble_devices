@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # Dart-side: format, analyze, and run the parser unit tests.
+  # ─────────────────────────────────────────────────────────────────
+  dart:
+    name: dart analyse + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: dart format --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
+
+  # ─────────────────────────────────────────────────────────────────
+  # Android-side: kotlinc compile gate against the bundled Lepu and
+  # ICDeviceManager AARs. Catches signature drift between the SDK
+  # AARs and the Kotlin bridge before any consumer app builds.
+  #
+  # The plugin has no `example/` app so we cannot run `flutter build
+  # apk`; instead we wrap the consumer build's classpath manually in
+  # tools/kotlinc_check.sh. To populate ~/.gradle's transforms cache
+  # this job spins up a throwaway Flutter app, declares the plugin
+  # via a path: dependency, and runs `flutter build apk --debug`
+  # which exercises the same compileDebugKotlin task a downstream
+  # app would.
+  # ─────────────────────────────────────────────────────────────────
+  android:
+    name: kotlinc compile gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: flutter_ble_devices
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-33 build-tools;33.0.2"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install kotlinc
+        run: |
+          curl -fsSL https://github.com/JetBrains/kotlin/releases/download/v2.1.0/kotlin-compiler-2.1.0.zip -o /tmp/k.zip
+          unzip -q /tmp/k.zip -d /opt
+          echo "/opt/kotlinc/bin" >> "$GITHUB_PATH"
+
+      - name: Pre-warm Gradle cache via throwaway consumer app
+        run: |
+          flutter create --platforms android consumer_app
+          cat >> consumer_app/pubspec.yaml <<'EOF'
+
+          dependency_overrides:
+            flutter_ble_devices:
+              path: ../flutter_ble_devices
+          EOF
+          (cd consumer_app && flutter pub get && flutter build apk --debug --target-platform=android-arm64) || true
+          # The build may legitimately fail on missing native iOS classes
+          # — we only care that compileDebugKotlin populated ~/.gradle.
+
+      - name: Run kotlinc compile gate
+        run: ./flutter_ble_devices/tools/kotlinc_check.sh
