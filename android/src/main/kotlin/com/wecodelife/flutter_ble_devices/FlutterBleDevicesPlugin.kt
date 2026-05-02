@@ -57,6 +57,47 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         private const val METHOD_CHANNEL = "viatom_ble"
         private const val EVENT_CHANNEL = "viatom_ble_stream"
         private const val PERMISSION_REQUEST_CODE = 9527
+
+        /**
+         * Pure decision function for [maybeTriggerCatchUp]. Exposed with
+         * `internal` visibility so the unit-test module can exercise the
+         * full scenario matrix without needing a FlutterPluginBinding or
+         * a real device.
+         *
+         * @param files the fresh fileList as posted by the SDK.
+         * @param known baseline set of filenames already seen on this
+         *        connection. Not mutated — the caller updates it after.
+         * @param autoFetchOnFinish the user's connect-time flag. If
+         *        false, this function always returns an empty list.
+         * @param hasPendingCatchUp true when this enumeration was
+         *        triggered by a recording-finished transition, in which
+         *        case the first-list-is-baseline short-circuit is
+         *        bypassed (see class-level kdoc on
+         *        `pendingCatchUpByModel`).
+         */
+        internal fun chooseCatchUpTargets(
+            files: List<String>,
+            known: Set<String>,
+            autoFetchOnFinish: Boolean,
+            hasPendingCatchUp: Boolean,
+        ): List<String> {
+            if (!autoFetchOnFinish) return emptyList()
+            val isFirstList = known.isEmpty()
+            val diff = files.filter { it.isNotBlank() && it !in known }
+            return when {
+                // Post-`recordingFinished` enumeration: at least one new
+                // file exists by definition. Prefer the diff, fall back
+                // to the tail of the list (Lepu returns file names as
+                // yyyyMMddHHmmss in ascending chronological order).
+                hasPendingCatchUp && diff.isNotEmpty() -> diff
+                hasPendingCatchUp && files.isNotEmpty() ->
+                    listOf(files.last())
+                // Plain enumeration on a fresh session → baseline only.
+                isFirstList -> emptyList()
+                diff.isEmpty() -> emptyList()
+                else -> diff
+            }
+        }
     }
 
     // ── Flutter binding ─────────────────────────────────────────────────
@@ -84,6 +125,16 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     // catch-up). Keyed by Lepu model id so it stays correct if the
     // consumer hops between devices.
     private val knownFilesByModel = mutableMapOf<Int, MutableSet<String>>()
+
+    // Models for which the next `fileList` event must force a catch-up
+    // download instead of being treated as a baseline snapshot. Set by
+    // onRecordingFinishedTransition() because that transition *is* the
+    // SDK telling us a new file just landed on flash: even when this is
+    // the session's very first enumeration (knownFilesByModel empty),
+    // we must pull at least the newest entry. Without this flag, the
+    // first-measurement-of-a-session file was silently skipped by
+    // maybeTriggerCatchUp's `isFirstList -> baseline only` branch.
+    private val pendingCatchUpByModel = mutableSetOf<Int>()
 
     // Most-recent file name passed to a `readFile()` for each model. The
     // ER1 family's `continueReadFile(model, fileName)` overload requires
@@ -757,6 +808,7 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             activeIComonDevice = null
             connectedModel = -1
             knownFilesByModel.clear()
+            pendingCatchUpByModel.clear()
             lastReadFileNameByModel.clear()
             lastEr1CurStatus = -1
             lastEr2CurStatus = -1
@@ -1028,6 +1080,15 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     /// baseline to identify freshly-recorded files. If
     /// `autoFetchOnFinish` is on, each new file is downloaded in sequence
     /// (the SDK serialises them internally).
+    ///
+    /// Special case: if `pendingCatchUpByModel` contains this model, the
+    /// caller was `onRecordingFinishedTransition`, so at least one new
+    /// file exists *by definition*. In that case we bypass the
+    /// "first-list-is-baseline" short-circuit and pull the diff — or
+    /// the tail of the list if the session has no baseline to diff
+    /// against, since Lepu returns file names as `yyyyMMddHHmmss` in
+    /// ascending chronological order and the newest entry is always
+    /// the just-saved recording.
     private fun maybeTriggerCatchUp(
         family: FileFamily,
         model: Int,
@@ -1036,19 +1097,28 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         if (family == FileFamily.NONE) return
         val known = knownFilesByModel.getOrPut(model) { mutableSetOf() }
         val isFirstList = known.isEmpty()
-        val newFiles = files.filter { it.isNotBlank() && it !in known }
+        val hasPendingCatchUp = pendingCatchUpByModel.remove(model)
+        val toFetch = chooseCatchUpTargets(
+            files = files,
+            known = known,
+            autoFetchOnFinish = autoFetchOnFinish,
+            hasPendingCatchUp = hasPendingCatchUp,
+        )
         known.addAll(files)
-        if (isFirstList || newFiles.isEmpty() || !autoFetchOnFinish) return
+        if (toFetch.isEmpty()) return
 
-        Log.i(TAG, "Auto-fetching ${newFiles.size} new file(s) for " +
-                "model=$model family=${fileFamilyName(family)}: $newFiles")
+        Log.i(
+            TAG,
+            "Auto-fetching ${toFetch.size} file(s) for model=$model " +
+                "family=${fileFamilyName(family)}: $toFetch " +
+                "(pendingCatchUp=$hasPendingCatchUp, isFirstList=$isFirstList)",
+        )
         // The Lepu SDK does not safely support overlapping readFile
-        // calls on most families, so trigger the first one immediately
-        // and rely on EventXxxReadFileComplete to fetch subsequent
-        // entries. For simplicity (and because 99% of the time the diff
-        // is a single entry), we pull them all at once and let the SDK
-        // queue them.
-        for (name in newFiles) {
+        // calls on most families, so trigger each one sequentially and
+        // rely on EventXxxReadFileComplete to pipeline them. For
+        // simplicity (and because 99% of the time the diff is a single
+        // entry), we post them all and let the SDK queue internally.
+        for (name in toFetch) {
             mainHandler.post { triggerReadFile(family, model, name) }
         }
     }
@@ -1057,11 +1127,15 @@ class FlutterBleDevicesPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     /// transition (ER1/ER2 `curStatus == 4`, BP2 `measureType == ecg_result` /
     /// `bp_result`). Emits the `recordingFinished` event and kicks off a
     /// fresh file-list pull, whose callback will in turn invoke
-    /// `maybeTriggerCatchUp`.
+    /// `maybeTriggerCatchUp`. We flag the model in
+    /// `pendingCatchUpByModel` first so that `maybeTriggerCatchUp`
+    /// knows this enumeration is guaranteed to contain a new file
+    /// (even if it's also the session's very first enumeration).
     private fun onRecordingFinishedTransition(family: FileFamily, model: Int) {
         if (family == FileFamily.NONE) return
         emitRecordingFinished(fileFamilyName(family), model)
         if (autoFetchOnFinish) {
+            pendingCatchUpByModel.add(model)
             mainHandler.post { triggerGetFileList(family, model) }
         }
     }

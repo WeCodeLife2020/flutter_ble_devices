@@ -135,6 +135,13 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 // which maps to the `autoFetchOnFinish` arg on the connect method call.
 @property (nonatomic, assign) BOOL            autoFetchOnFinish;
 @property (nonatomic, strong) NSMutableSet<NSString *> *knownFileNames;
+// Set by triggerGetFileListForCatchUp (i.e. the recording-finished
+// transition) so the next applyFileListForCatchUp: invocation knows
+// that a new file exists by definition and must be downloaded — even
+// when this is the session's very first enumeration and
+// knownFileNames is still empty. See the Android side's
+// `pendingCatchUpByModel` for the same fix.
+@property (nonatomic, assign) BOOL            pendingCatchUp;
 @property (nonatomic, assign) NSInteger       lastEr1CurStatus;
 @property (nonatomic, assign) NSInteger       lastEr2CurStatus;
 @property (nonatomic, assign) NSInteger       lastBp2ParamDataType;
@@ -371,6 +378,7 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
     NSNumber *autoBox = call.arguments[@"autoFetchOnFinish"];
     self.autoFetchOnFinish    = (autoBox != nil) ? autoBox.boolValue : YES;
     self.knownFileNames       = [NSMutableSet set];
+    self.pendingCatchUp       = NO;
     self.lastEr1CurStatus     = -1;
     self.lastEr2CurStatus     = -1;
     self.lastBp2ParamDataType = -1;
@@ -756,7 +764,13 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 /// event will in turn trigger `applyFileListForCatchUp:` below. On the
 /// legacy O2 path the file list is embedded in `getInfo` so we re-issue
 /// that; on URAT families a dedicated `requestFilelist` exists.
+///
+/// This method is only invoked from the two recording-finished
+/// transition points (URAT curStatus→4 for ER1/ER2 and BP2 param-type
+/// → result), so setting `pendingCatchUp = YES` here is safe and
+/// eliminates any risk of forgetting the flag at a callsite.
 - (void)triggerGetFileListForCatchUp {
+    self.pendingCatchUp = YES;
     VTMDeviceMapping *m = self.activeMapping;
     if (m.protocolPath == VTMProtocolPathURAT && self.uratUtil) {
         [self.uratUtil requestFilelist];
@@ -767,29 +781,50 @@ static NSString *const kEventChannelName  = @"viatom_ble_stream";
 
 /// Diff a freshly-received file list against `knownFileNames` and
 /// auto-pull any new entries (when `autoFetchOnFinish` is enabled).
-/// The first list we see on a connection becomes the baseline so that
-/// pre-existing recordings don't get mass-downloaded unexpectedly.
+/// The first list we see on a connection normally becomes the
+/// baseline so that pre-existing recordings don't get mass-downloaded
+/// unexpectedly — unless `pendingCatchUp` is set, meaning this
+/// enumeration was triggered by a recording-finished transition and a
+/// new file is guaranteed to exist (fall back to the tail of the
+/// list, which Lepu returns in ascending chronological order, if for
+/// some reason there's no diff against the empty baseline).
 - (void)applyFileListForCatchUp:(NSArray<NSString *> *)files {
     if (files.count == 0) return;
-    BOOL isFirstList = (self.knownFileNames.count == 0);
-    NSMutableArray<NSString *> *newOnes = [NSMutableArray array];
+    BOOL isFirstList       = (self.knownFileNames.count == 0);
+    BOOL hasPendingCatchUp = self.pendingCatchUp;
+    self.pendingCatchUp    = NO;
+
+    NSMutableArray<NSString *> *diff = [NSMutableArray array];
     for (NSString *name in files) {
         if (name.length == 0) continue;
         if (![self.knownFileNames containsObject:name]) {
-            [newOnes addObject:name];
+            [diff addObject:name];
         }
     }
     [self.knownFileNames addObjectsFromArray:files];
-    if (isFirstList || !self.autoFetchOnFinish || newOnes.count == 0) return;
+    if (!self.autoFetchOnFinish) return;
 
-    FBD_LOG(@"auto-fetching %lu new file(s): %@",
-            (unsigned long)newOnes.count, newOnes);
+    NSArray<NSString *> *toFetch = nil;
+    if (hasPendingCatchUp && diff.count > 0) {
+        toFetch = diff;
+    } else if (hasPendingCatchUp && files.count > 0) {
+        toFetch = @[ files.lastObject ]; // tail = newest recording
+    } else if (isFirstList || diff.count == 0) {
+        return; // plain baseline enumeration
+    } else {
+        toFetch = diff;
+    }
+
+    FBD_LOG(@"auto-fetching %lu file(s): %@ "
+            @"(pendingCatchUp=%d, isFirstList=%d)",
+            (unsigned long)toFetch.count, toFetch,
+            hasPendingCatchUp, isFirstList);
     VTMDeviceMapping *m = self.activeMapping;
     // The URAT state machine only supports one in-flight transfer at a
     // time; kick off the first and let the client call readFile() for
     // subsequent entries on the fileReadComplete event. In practice the
     // diff is almost always a single file (the one just saved).
-    for (NSString *name in newOnes) {
+    for (NSString *name in toFetch) {
         if (self.pendingReadFileName != nil) break;
         if (m.protocolPath == VTMProtocolPathURAT) {
             self.pendingReadFileName  = name;

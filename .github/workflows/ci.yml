@@ -77,3 +77,14 @@ jobs:
 
       - name: Run kotlinc compile gate
         run: ./flutter_ble_devices/tools/kotlinc_check.sh
+
+      - name: Run Kotlin JVM unit tests
+        # Exercises the full ChooseCatchUpTargetsTest scenario matrix
+        # (fresh-session first recording, diff, empty files, etc.). Driven
+        # via the consumer app's Gradle so transitive deps resolve.
+        working-directory: consumer_app/android
+        run: |
+          ./gradlew :flutter_ble_devices:testDebugUnitTest \
+            --console=plain \
+            --no-daemon \
+            -PFLUTTER_PROJECT_DIR=${{ github.workspace }}/consumer_app
