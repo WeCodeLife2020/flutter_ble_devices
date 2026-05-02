@@ -16,6 +16,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../parsers/bp2_file.dart';
+import '../parsers/er1_er2_file.dart';
+
 /// Response to [BluetodevController.getFileList].
 class FileListEvent {
   /// Lepu/iComon model id for which this list applies.
@@ -143,6 +146,35 @@ class FileReadCompleteEvent {
 
   /// File size in bytes (equivalent to `content.length`).
   int get size => content.length;
+
+  /// Decode [content] into a typed object using the bundled Dart-side
+  /// parsers.  Currently supports:
+  ///
+  ///  * `bp2` → [Bp2File] (subtype [Bp2BpFile] or [Bp2EcgFile])
+  ///  * `er1` → [Er1EcgFile]
+  ///  * `er2` → [Er1EcgFile] (same on-flash format as ER1)
+  ///
+  /// Returns `null` for any other family or when [content] is empty
+  /// (i.e. the SDK only exposed pre-parsed fields via [parsed]).
+  /// Re-throws [ArgumentError] when the bytes are obviously malformed
+  /// — typically too short for the family's documented header.
+  ///
+  /// The decoder is *cross-platform*: the same Dart code runs on
+  /// Android (where the Lepu AAR also exposes equivalent Java
+  /// objects) and iOS (where it's the only available decoder).
+  Object? get decoded {
+    if (content.isEmpty) return null;
+    switch (deviceFamily) {
+      case 'bp2':
+        return Bp2File.parse(content);
+      case 'er1':
+        return Er1EcgFile.parseEr1(content);
+      case 'er2':
+        return Er1EcgFile.parseEr2(content);
+      default:
+        return null;
+    }
+  }
 
   @override
   String toString() => 'FileReadComplete($deviceFamily $fileName $size bytes)';

@@ -337,18 +337,68 @@ await BluetodevController.cancelReadFile();
 await progressSub.cancel();
 ```
 
+### Decoding recorded files in Dart
+
+ER1 / ER2 / BP2 recordings are emitted as raw bytes in the
+`fileReadComplete` event. The plugin ships pure-Dart decoders for
+those three families that are byte-for-byte compatible with the
+official Lepu Android SDK — both platforms run **the same parser**.
+
+```dart
+BluetodevController.fileReadCompleteStream.listen((file) {
+  switch (file.decoded) {
+    case Bp2BpFile bp:
+      print('BP at ${bp.measuredAt}: ${bp.sys}/${bp.dia} mmHg, '
+            'pr=${bp.pr}${bp.arrhythmia ? " (arrhythmia)" : ""}');
+    case Bp2EcgFile ecg:
+      print('ECG ${ecg.duration}: hr=${ecg.hr} qrs=${ecg.qrs}ms '
+            'findings=${ecg.diagnosis.findings.join(", ")}, '
+            '${ecg.waveShortData.length} samples @ ${kBp2EcgSamplingRate} Hz');
+    case Er1EcgFile ecg:
+      print('${ecg.family} ECG ${ecg.duration}: '
+            '${ecg.sampleCount} samples @ ${kEr1EcgSamplingRate} Hz');
+  }
+});
+```
+
+The decoder returns `null` for any other family or when `content` is
+empty (in which case the SDK only filled `parsed` — see below).
+
+| Family       | `decoded` type | Header / fields exposed |
+| ---          | ---            | ---                     |
+| `bp2` (type=1) | [`Bp2BpFile`]  | `sys` / `dia` / `mean` / `pr` / `arrhythmia` / `measuredAt` |
+| `bp2` (type=2) | [`Bp2EcgFile`] | `hr` / `qrs` / `pvcs` / `qtc` / `diagnosis` (12-bit findings bitmask) / `waveShortData` (Int16) / `waveFloatData` (mV) / `connectCable` / `recordingTime` / `measuredAt` |
+| `er1`, `er2` | [`Er1EcgFile`] | `recordingTime` / `dataCrc` / `magic` / `waveShortData` (Int16) / `waveFloatData` (mV) |
+
+Sampling rates and mV conversion factors are exposed as top-level
+constants — `kBp2EcgSamplingRate` (250 Hz), `kBp2EcgMvConversion`
+(0.003098), `kEr1EcgSamplingRate` (125 Hz), `kEr1EcgMvConversion`
+(≈0.002467). They're identical to what the plugin emits on the
+real-time `rtData` stream so a downstream signal-processing pipeline
+can use the same code path for both live and recorded data.
+
+The `EcgDiagnosis` class decodes BP2's 32-bit diagnosis bit-mask
+(also useful when handling the BP2 RT `ecg_result` measureType).
+Sentinel values map verbatim to the Lepu SDK:
+
+- `0` → normal sinus rhythm (`isRegular`)
+- `-1` → poor signal (`isPoorSignal`)
+- `-2` → lead-off (`isLeadOff`)
+- otherwise the low nine bits flag fast / slow / irregular HR, PVCs,
+  pause, AFib, wide QRS, prolonged QTc, short QTc.
+
 ### `parsed` field reference per family
 
 The `parsed` map on `fileReadComplete` carries the typed fields the
 vendor SDK has already decoded for you. On iOS only the legacy O2 path
 populates `parsed`; URAT-protocol families (BP2, ER1/ER2, WOxi, FOxi,
 ER3, M-series) deliver the raw bytes via `content` and Dart-side
-parsing is up to you (or use the helpers below).
+parsing is up to you (or use the decoders above).
 
 | `deviceFamily` | `parsed` keys                                                                                |
 | ---            | ---                                                                                          |
-| `bp2`          | `fileName`, `type`, `content` (base64)                                                       |
-| `er1`, `er2`   | `fileName`, `content` (base64)                                                               |
+| `bp2`          | `fileName`, `type`, `content` (base64) — Android only; use `decoded` for typed fields        |
+| `er1`, `er2`   | `fileName`, `content` (base64) — Android only; use `decoded` for typed fields                |
 | `oxy`          | `fileType`, `fileVersion`, `recordingTime`, `spo2List`, `prList`, `motionList`, `avgSpo2`, `asleepTime`, `asleepTimePercent` |
 | `oxyII`        | `fileType`, `fileVersion`, `deviceModel`, `startTime`, `interval`, `spo2List`, `prList`, `motionList`, `avgSpo2`, `minSpo2`, `avgHr`, `stepCounter`, `o2Score`, `dropsTimes3Percent`, `dropsTimes4Percent`, `dropsTimes90Percent`, `durationTime90Percent`, `percentLessThan90`, `remindHrs`, `remindsSpo2`, `checkSum`, `magic`, `size`, `channelType`, `channelBytes`, `pointBytes` |
 | `pf10aw1`      | `fileType`, `fileVersion`, `deviceModel`, `startTime`, `endTime`, `interval`, `spo2List`, `prList`, `checkSum`, `magic`, `size`, `channelType`, `channelBytes`, `pointBytes` |
